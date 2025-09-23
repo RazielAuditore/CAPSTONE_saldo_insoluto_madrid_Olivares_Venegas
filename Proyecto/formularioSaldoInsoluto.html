@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formulario Saldo Insoluto</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background:#f9f9f9; }
+    h1 { color:#333; }
+    form { background:#fff; padding:20px; border-radius:10px; box-shadow:0 4px 8px rgba(0,0,0,0.1); max-width:600px; }
+    label { display:block; margin-top:10px; }
+    input, select, textarea { width:95%; padding:8px; margin-top:5px; border:1px solid #ccc; border-radius:5px; }
+    button { margin-top:20px; padding:10px; background:#007BFF; border:none; color:#fff; border-radius:5px; cursor:pointer; }
+    button:hover { background:#0056b3; }
+  </style>
+</head>
+<body>
+  <h1>Formulario Saldo Insoluto</h1>
+  <form onsubmit="enviarFormulario(event)">
+    
+    <fieldset>
+      <legend><b>Datos del Fallecido</b></legend>
+      <label for="rut">RUT Fallecido:
+        <input type="text" id="rut" placeholder="12.345.678-9" required>
+      </label>
+      <label for="nombre">Nombres:
+        <input type="text" id="nombre" required>
+      </label>
+      <label for="appaterno">Apellido Paterno:
+        <input type="text" id="appaterno" required>
+      </label>
+      <label for="apmaterno">Apellido Materno:
+        <input type="text" id="apmaterno">
+      </label>
+      <label for="nacionalidad">Nacionalidad:
+        <select id="nacionalidad">
+          <option value="Chileno/a">Chileno/a</option>
+          <option value="Extranjero/a">Extranjero/a</option>
+        </select>
+      </label>
+      <label for="fechnac">Fecha Nacimiento:
+        <input type="date" id="fechnac">
+      </label>
+      <label for="fechdef">Fecha Defunción:
+        <input type="date" id="fechdef">
+      </label>
+      <label for="direccion">Dirección:
+        <input type="text" id="direccion">
+      </label>
+      <label for="observacion">Observación:
+        <textarea id="observacion"></textarea>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend><b>Documentos</b></legend>
+      <label for="fileone">Documento 1:
+        <input type="file" id="fileone" name="documento1">
+      </label>
+      <label for="filetwo">Documento 2:
+        <input type="file" id="filetwo" name="documento2">
+      </label>
+      <label for="filethree">Documento 3:
+        <input type="file" id="filethree" name="documento3">
+      </label>
+      <label for="filefour">Documento 4:
+        <input type="file" id="filefour" name="documento4">
+      </label>
+      <label for="filefive">Documento 5:
+        <input type="file" id="filefive" name="documento5">
+      </label>
+    </fieldset>
+
+    <button type="submit">Enviar</button>
+  </form>
+
+  <script>
+    function enviarFormulario(event) {
+      event.preventDefault(); // evita recargar la página
+
+      const data = {
+        rut: document.getElementById("rut").value,
+        nombre: document.getElementById("nombre").value,
+        appaterno: document.getElementById("appaterno").value,
+        apmaterno: document.getElementById("apmaterno").value,
+        nacionalidad: document.getElementById("nacionalidad").value,
+        fechnac: document.getElementById("fechnac").value,
+        fechdef: document.getElementById("fechdef").value,
+        direccion: document.getElementById("direccion").value,
+        observacion: document.getElementById("observacion").value,
+      };
+
+      console.log("Formulario enviado:", data);
+      alert("Formulario enviado ✅\nRevisa la consola para ver los datos.");
+    }
+  </script>
+</body>
+</html>
+
