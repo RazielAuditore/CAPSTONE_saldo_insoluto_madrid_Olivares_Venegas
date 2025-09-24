@@ -1,99 +1,430 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Formulario Saldo Insoluto</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Saldo Insoluto — Formulario</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background:#f9f9f9; }
-    h1 { color:#333; }
-    form { background:#fff; padding:20px; border-radius:10px; box-shadow:0 4px 8px rgba(0,0,0,0.1); max-width:600px; }
-    label { display:block; margin-top:10px; }
-    input, select, textarea { width:95%; padding:8px; margin-top:5px; border:1px solid #ccc; border-radius:5px; }
-    button { margin-top:20px; padding:10px; background:#007BFF; border:none; color:#fff; border-radius:5px; cursor:pointer; }
-    button:hover { background:#0056b3; }
+    :root { --c1:#0d6efd; --c2:#f8f9fa; --b:#212529; --muted:#6c757d; --ok:#28a745; --bad:#dc3545; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; margin: 20px; background:#f5f7fb; color:#222; }
+    h1 { margin: 0 0 16px; }
+    .card { background:#fff; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.06); overflow:hidden; }
+    .tabs { display:flex; gap:8px; padding:12px; background:var(--c2); border-bottom:1px solid #e9ecef; flex-wrap: wrap; }
+    .tab-btn { padding:10px 14px; border:1px solid #e9ecef; background:#fff; border-radius:8px; cursor:pointer; color:#333; }
+    .tab-btn.active { background:var(--c1); border-color:var(--c1); color:#fff; }
+    .section { display:none; padding:18px; }
+    .section.active { display:block; }
+    fieldset { border:1px solid #e9ecef; border-radius:10px; padding:14px; margin:0 0 16px; background:#fff; }
+    legend { padding:0 8px; color:#555; }
+    label { display:block; margin-top:10px; color:#333; font-size:14px; }
+    input, select, textarea { width:100%; padding:10px; margin-top:6px; border:1px solid #ced4da; border-radius:8px; background:#fff; }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
+    .actions { display:flex; justify-content:space-between; gap:12px; margin-top:18px; flex-wrap: wrap; }
+    .btn { padding:10px 14px; border:none; border-radius:8px; cursor:pointer; }
+    .btn-primary { background:var(--c1); color:#fff; }
+    .btn-secondary { background:#adb5bd; color:#fff; }
+    .btn-ok { background:var(--ok); color:#fff; }
+    .btn-bad { background:var(--bad); color:#fff; }
+    table { width:100%; border-collapse: collapse; margin-top:12px; }
+    th, td { border-bottom: 1px solid #e9ecef; padding:10px; text-align:left; }
+    th { background:#f8f9fa; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; background:#eef; margin-left:8px; }
+    .badge.ok { background:#e6f6ea; color:#0f7a2e; }
+    @media (max-width: 700px) { .row, .row3 { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <h1>Formulario Saldo Insoluto</h1>
-  <form onsubmit="enviarFormulario(event)">
-    
-    <fieldset>
-      <legend><b>Datos del Fallecido</b></legend>
-      <label for="rut">RUT Fallecido:
-        <input type="text" id="rut" placeholder="12.345.678-9" required>
-      </label>
-      <label for="nombre">Nombres:
-        <input type="text" id="nombre" required>
-      </label>
-      <label for="appaterno">Apellido Paterno:
-        <input type="text" id="appaterno" required>
-      </label>
-      <label for="apmaterno">Apellido Materno:
-        <input type="text" id="apmaterno">
-      </label>
-      <label for="nacionalidad">Nacionalidad:
-        <select id="nacionalidad">
-          <option value="Chileno/a">Chileno/a</option>
-          <option value="Extranjero/a">Extranjero/a</option>
-        </select>
-      </label>
-      <label for="fechnac">Fecha Nacimiento:
-        <input type="date" id="fechnac">
-      </label>
-      <label for="fechdef">Fecha Defunción:
-        <input type="date" id="fechdef">
-      </label>
-      <label for="direccion">Dirección:
-        <input type="text" id="direccion">
-      </label>
-      <label for="observacion">Observación:
-        <textarea id="observacion"></textarea>
-      </label>
-    </fieldset>
+  <h1>Formulario — Saldo Insoluto</h1>
+  <div class="card">
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="rep">Representante</button>
+      <button class="tab-btn" data-tab="fal">Fallecido</button>
+      <button class="tab-btn" data-tab="ben">Beneficiarios</button>
+      <button class="tab-btn" data-tab="docs">Documentos</button>
+      <button class="tab-btn" data-tab="validacion">Validación</button>
+      <button class="tab-btn" data-tab="enviar">Enviar</button>
+    </div>
 
-    <fieldset>
-      <legend><b>Documentos</b></legend>
-      <label for="fileone">Documento 1:
-        <input type="file" id="fileone" name="documento1">
-      </label>
-      <label for="filetwo">Documento 2:
-        <input type="file" id="filetwo" name="documento2">
-      </label>
-      <label for="filethree">Documento 3:
-        <input type="file" id="filethree" name="documento3">
-      </label>
-      <label for="filefour">Documento 4:
-        <input type="file" id="filefour" name="documento4">
-      </label>
-      <label for="filefive">Documento 5:
-        <input type="file" id="filefive" name="documento5">
-      </label>
-    </fieldset>
+    <form id="formSaldo" onsubmit="handleSubmit(event)">
+      <!-- REPRESENTANTE -->
+      <section id="rep" class="section active">
+        <fieldset>
+          <legend><b>Datos del Representante</b></legend>
+          <div class="row">
+            <label>RUT Representante
+              <input id="rep_rut" type="text" placeholder="12.345.678-9" required
+                     pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]">
+            </label>
+            <label>Calidad
+              <select id="rep_calidad">
+                <option value="Heredero">Heredero</option>
+                <option value="Representante con poder">Representante con poder</option>
+                <option value="Curador">Curador</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label>Nombres
+              <input id="rep_nombres" type="text" required>
+            </label>
+            <label>Apellido Paterno
+              <input id="rep_ap_pat" type="text" required>
+            </label>
+          </div>
+          <div class="row">
+            <label>Apellido Materno
+              <input id="rep_ap_mat" type="text">
+            </label>
+            <label>Teléfono
+              <input id="rep_tel" type="tel" placeholder="+56 9 1234 5678">
+            </label>
+          </div>
+          <label>Domicilio
+            <input id="rep_dom" type="text">
+          </label>
+        </fieldset>
+        <div class="actions">
+          <span class="muted">Completa los datos del representante y avanza.</span>
+          <button type="button" class="btn btn-primary" onclick="goTab('fal')">Siguiente: Fallecido →</button>
+        </div>
+      </section>
 
-    <button type="submit">Enviar</button>
-  </form>
+      <!-- FALLECIDO -->
+      <section id="fal" class="section">
+        <fieldset>
+          <legend><b>Datos del Fallecido</b></legend>
+          <div class="row">
+            <label>RUT Fallecido
+              <input id="fal_rut" type="text" placeholder="12.345.678-9" required
+                     pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]">
+            </label>
+            <label>Nacionalidad
+              <select id="fal_nac">
+                <option value="Chileno/a">Chileno/a</option>
+                <option value="Extranjero/a">Extranjero/a</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label>Nombres
+              <input id="fal_nombres" type="text" required>
+            </label>
+            <label>Apellido Paterno
+              <input id="fal_ap_pat" type="text" required>
+            </label>
+          </div>
+          <div class="row">
+            <label>Apellido Materno
+              <input id="fal_ap_mat" type="text">
+            </label>
+            <label>Dirección
+              <input id="fal_dir" type="text">
+            </label>
+          </div>
+          <div class="row">
+            <label>Fecha Nacimiento
+              <input id="fal_fnac" type="date">
+            </label>
+            <label>Fecha Defunción
+              <input id="fal_fdef" type="date">
+            </label>
+          </div>
+          <label>Observación
+            <textarea id="fal_obs"></textarea>
+          </label>
+        </fieldset>
+        <div class="actions">
+          <button type="button" class="btn btn-secondary" onclick="goTab('rep')">← Volver</button>
+          <button type="button" class="btn btn-primary" onclick="goTab('ben')">Siguiente: Beneficiarios →</button>
+        </div>
+      </section>
+
+      <!-- BENEFICIARIOS -->
+      <section id="ben" class="section">
+        <fieldset>
+          <legend><b>Beneficiarios / Herederos</b></legend>
+
+          <div class="row3">
+            <label>Nombre completo
+              <input id="ben_nombre" type="text" placeholder="Ej.: Ana Pérez Gómez">
+            </label>
+            <label>RUN
+              <input id="ben_run" type="text" placeholder="12.345.678-9"
+                     pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]">
+            </label>
+            <label>Parentesco
+              <input id="ben_parentesco" type="text" placeholder="Hijo/a, Cónyuge, etc.">
+            </label>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-ok" onclick="agregarBeneficiario()">+ Agregar beneficiario</button>
+          </div>
+
+          <table id="tablaBen">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>RUN</th><th>Parentesco</th><th>¿Representante?</th><th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <p class="muted">Marca “Representante” solo para la persona que actúa en representación.</p>
+        </fieldset>
+        <div class="actions">
+          <button type="button" class="btn btn-secondary" onclick="goTab('fal')">← Volver</button>
+          <button type="button" class="btn btn-primary" onclick="goTab('docs')">Siguiente: Documentos →</button>
+        </div>
+      </section>
+
+      <!-- DOCUMENTOS -->
+      <section id="docs" class="section">
+        <fieldset>
+          <legend><b>Documentos</b></legend>
+          <div class="row">
+            <label>Documento 1
+              <input type="file" id="doc1" />
+            </label>
+            <label>Documento 2
+              <input type="file" id="doc2" />
+            </label>
+          </div>
+          <div class="row">
+            <label>Documento 3
+              <input type="file" id="doc3" />
+            </label>
+            <label>Documento 4
+              <input type="file" id="doc4" />
+            </label>
+          </div>
+          <label>Documento 5
+            <input type="file" id="doc5" />
+          </label>
+        </fieldset>
+        <div class="actions">
+          <button type="button" class="btn btn-secondary" onclick="goTab('ben')">← Volver</button>
+          <button type="button" class="btn btn-primary" onclick="goTab('validacion')">Siguiente: Validación →</button>
+        </div>
+      </section>
+
+      <!-- VALIDACIÓN Y EXPEDICIÓN -->
+      <section id="validacion" class="section">
+        <fieldset>
+          <legend><b>Validación y Expedición</b></legend>
+          <label>Sucursal de expedición
+            <input type="text" id="sucursal" placeholder="Ej: IPS Providencia">
+          </label>
+
+          <div class="row">
+            <div>
+              <label>Clave del Representante (para firmar)
+                <input type="password" id="pass_rep" placeholder="•••••••">
+              </label>
+              <button type="button" class="btn btn-ok" onclick="firmarRepresentante()">Firmar Representante</button>
+              <span id="badge_rep" class="badge" style="display:none;">Sin firma</span>
+            </div>
+            <div>
+              <label>Clave del Funcionario (para firmar)
+                <input type="password" id="pass_func" placeholder="•••••••">
+              </label>
+              <button type="button" class="btn btn-ok" onclick="firmarFuncionario()">Firmar Funcionario</button>
+              <span id="badge_func" class="badge" style="display:none;">Sin firma</span>
+            </div>
+          </div>
+
+          <p class="muted" style="margin-top:8px;">
+            Cada firma se genera como <b>HMAC-SHA256</b> del mismo payload, con su propia clave y un salt independiente.
+          </p>
+        </fieldset>
+        <div class="actions">
+          <button type="button" class="btn btn-secondary" onclick="goTab('docs')">← Volver</button>
+          <button type="button" class="btn btn-primary" onclick="goTab('enviar')">Siguiente: Enviar →</button>
+        </div>
+      </section>
+
+      <!-- ENVIAR -->
+      <section id="enviar" class="section">
+        <fieldset>
+          <legend><b>Revisión y Envío</b></legend>
+          <p class="muted">Al enviar, se descargará un JSON con todo el formulario y ambas firmas (si existen).</p>
+          <div class="actions">
+            <button type="button" class="btn btn-secondary" onclick="goTab('validacion')">← Volver</button>
+            <button type="submit" class="btn btn-ok">Enviar</button>
+          </div>
+        </fieldset>
+      </section>
+    </form>
+  </div>
 
   <script>
-    function enviarFormulario(event) {
-      event.preventDefault(); // evita recargar la página
+    // ----- Tabs -----
+    const tabButtons = document.querySelectorAll(".tab-btn");
+    function goTab(id) {
+      document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+      tabButtons.forEach(b => b.classList.toggle("active", b.dataset.tab === id));
+    }
+    tabButtons.forEach(b => b.addEventListener("click", () => goTab(b.dataset.tab)));
+
+    // ----- Beneficiarios dinámicos -----
+    const tbody = document.querySelector("#tablaBen tbody");
+    function agregarBeneficiario() {
+      const nombre = document.getElementById("ben_nombre").value.trim();
+      const run = document.getElementById("ben_run").value.trim();
+      const par = document.getElementById("ben_parentesco").value.trim();
+      if (!nombre || !run) { alert("Completa nombre y RUN del beneficiario"); return; }
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${nombre}</td>
+        <td>${run}</td>
+        <td>${par}</td>
+        <td style="text-align:center;"><input type="checkbox" class="esRep"></td>
+        <td><button type="button" class="btn btn-bad" onclick="this.closest('tr').remove()">Eliminar</button></td>
+      `;
+      tbody.appendChild(tr);
+
+      document.getElementById("ben_nombre").value = "";
+      document.getElementById("ben_run").value = "";
+      document.getElementById("ben_parentesco").value = "";
+    }
+
+    // ----- WebCrypto utils -----
+    function strToUint8(s){ return new TextEncoder().encode(s); }
+    function bufToHex(buf){ return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join(""); }
+    async function deriveHmacKey(password, salt) {
+      const baseKey = await crypto.subtle.importKey("raw", strToUint8(password), { name:"PBKDF2" }, false, ["deriveKey"]);
+      return crypto.subtle.deriveKey(
+        { name:"PBKDF2", salt, iterations:100000, hash:"SHA-256" },
+        baseKey,
+        { name:"HMAC", hash:"SHA-256", length:256 },
+        false,
+        ["sign"]
+      );
+    }
+    async function hmacSign(key, payloadStr){
+      const sig = await crypto.subtle.sign("HMAC", key, strToUint8(payloadStr));
+      return bufToHex(sig);
+    }
+
+    // ----- Payload canónico simple para las firmas -----
+    function buildPayload() {
+      // Puedes agregar más campos si quieres que queden “bajo firma”
+      return [
+        document.getElementById("fal_rut").value,
+        document.getElementById("fal_nombres").value,
+        document.getElementById("fal_ap_pat").value,
+        document.getElementById("fal_fdef").value || "",
+        document.getElementById("sucursal").value || ""
+      ].join("|");
+    }
+
+    // ----- Firmas (rep / func) -----
+    let firmaRep = null;  // { firma_hex, salt_hex, ts }
+    let firmaFunc = null; // { firma_hex, salt_hex, ts }
+
+    async function firmarRepresentante(){
+      const pass = document.getElementById("pass_rep").value.trim();
+      if(!pass){ alert("Ingresa la clave del representante"); return; }
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const key = await deriveHmacKey(pass, salt);
+      const payload = buildPayload();
+      const firma_hex = await hmacSign(key, payload);
+      const ts = new Date().toISOString();
+      firmaRep = { payload, firma_hex, salt_hex: bufToHex(salt), algoritmo: "HMAC-SHA256", ts };
+      const badge = document.getElementById("badge_rep");
+      badge.textContent = "Representante: Firmado";
+      badge.classList.add("ok"); badge.style.display="inline-block";
+      alert("✅ Firma del Representante generada");
+    }
+
+    async function firmarFuncionario(){
+      const pass = document.getElementById("pass_func").value.trim();
+      if(!pass){ alert("Ingresa la clave del funcionario"); return; }
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const key = await deriveHmacKey(pass, salt);
+      const payload = buildPayload();
+      const firma_hex = await hmacSign(key, payload);
+      const ts = new Date().toISOString();
+      firmaFunc = { payload, firma_hex, salt_hex: bufToHex(salt), algoritmo: "HMAC-SHA256", ts };
+      const badge = document.getElementById("badge_func");
+      badge.textContent = "Funcionario: Firmado";
+      badge.classList.add("ok"); badge.style.display="inline-block";
+      alert("✅ Firma del Funcionario generada");
+    }
+
+    // ----- Enviar (descarga JSON con todo) -----
+    function handleSubmit(e) {
+      e.preventDefault();
+
+      // Validación rápida de fechas (si ambas existen)
+      const fn = document.getElementById("fal_fnac").value;
+      const fd = document.getElementById("fal_fdef").value;
+      if (fn && fd && new Date(fn) >= new Date(fd)) {
+        alert("⚠ La fecha de nacimiento debe ser menor que la fecha de defunción.");
+        goTab('fal'); return;
+      }
 
       const data = {
-        rut: document.getElementById("rut").value,
-        nombre: document.getElementById("nombre").value,
-        appaterno: document.getElementById("appaterno").value,
-        apmaterno: document.getElementById("apmaterno").value,
-        nacionalidad: document.getElementById("nacionalidad").value,
-        fechnac: document.getElementById("fechnac").value,
-        fechdef: document.getElementById("fechdef").value,
-        direccion: document.getElementById("direccion").value,
-        observacion: document.getElementById("observacion").value,
+        representante: {
+          rut: document.getElementById("rep_rut").value,
+          calidad: document.getElementById("rep_calidad").value,
+          nombres: document.getElementById("rep_nombres").value,
+          ap_paterno: document.getElementById("rep_ap_pat").value,
+          ap_materno: document.getElementById("rep_ap_mat").value,
+          telefono: document.getElementById("rep_tel").value,
+          domicilio: document.getElementById("rep_dom").value
+        },
+        fallecido: {
+          rut: document.getElementById("fal_rut").value,
+          nacionalidad: document.getElementById("fal_nac").value,
+          nombres: document.getElementById("fal_nombres").value,
+          ap_paterno: document.getElementById("fal_ap_pat").value,
+          ap_materno: document.getElementById("fal_ap_mat").value,
+          direccion: document.getElementById("fal_dir").value,
+          fecha_nacimiento: document.getElementById("fal_fnac").value,
+          fecha_defuncion: document.getElementById("fal_fdef").value,
+          observacion: document.getElementById("fal_obs").value
+        },
+        beneficiarios: Array.from(tbody.querySelectorAll("tr")).map(tr => {
+          const tds = tr.querySelectorAll("td");
+          return {
+            nombre: tds[0].textContent,
+            run: tds[1].textContent,
+            parentesco: tds[2].textContent,
+            es_representante: tr.querySelector(".esRep").checked
+          };
+        }),
+        documentos: {
+          doc1: document.getElementById("doc1")?.files?.[0]?.name || null,
+          doc2: document.getElementById("doc2")?.files?.[0]?.name || null,
+          doc3: document.getElementById("doc3")?.files?.[0]?.name || null,
+          doc4: document.getElementById("doc4")?.files?.[0]?.name || null,
+          doc5: document.getElementById("doc5")?.files?.[0]?.name || null
+        },
+        validacion: {
+          sucursal: document.getElementById("sucursal").value,
+          firma_representante: firmaRep,
+          firma_funcionario:  firmaFunc
+        }
       };
 
-      console.log("Formulario enviado:", data);
-      alert("Formulario enviado ✅\nRevisa la consola para ver los datos.");
+      // Descarga JSON (demo)
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "saldo_insoluto_con_firmas.json"; a.click();
+      URL.revokeObjectURL(url);
+
+      alert("Formulario enviado ✅\nSe descargó un JSON con los datos y las firmas.");
+      goTab('enviar');
     }
   </script>
 </body>
 </html>
+
+
 
