@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Consulta de Saldos Insolutos</title>
+  <style>
+    :root { --c1:#0d6efd; --cBg:#f6f7fb; --text:#333; --border:#e5e7eb; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Arial, sans-serif; background:var(--cBg); color:var(--text); }
+    .header { background:#fff; border-bottom:1px solid var(--border); padding:20px; text-align:center; }
+    h1 { margin:0; color:var(--c1); font-size:28px; }
+    .container { max-width:1200px; margin:0 auto; padding:20px; }
+    .search-box { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px; }
+    .form-group { margin-bottom:16px; }
+    label { display:block; margin-bottom:6px; font-weight:500; }
+    input, select { width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; font-size:16px; }
+    .btn { background:var(--c1); color:#fff; border:none; padding:12px 24px; border-radius:8px; cursor:pointer; font-size:16px; }
+    .btn:hover { background:#084298; }
+    .results { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+    .no-results { text-align:center; color:#6b7280; padding:40px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>Consulta de Saldos Insolutos</h1>
+  </header>
+  
+  <div class="container">
+    <div class="search-box">
+      <h2>Buscar Saldo Insoluto</h2>
+      <form id="searchForm">
+        <div class="form-group">
+          <label for="rut">RUT del Fallecido</label>
+          <input type="text" id="rut" placeholder="12.345.678-9" pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]" required>
+        </div>
+        <button type="submit" class="btn">Buscar</button>
+      </form>
+    </div>
+    
+    <div class="results" id="results" style="display:none;">
+      <h3>Resultados de la Búsqueda</h3>
+      <div id="resultsContent"></div>
+    </div>
+    
+    <div class="no-results" id="noResults" style="display:none;">
+      <p>No se encontraron saldos insolutos para los criterios de búsqueda.</p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('searchForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const rut = document.getElementById('rut').value.trim();
+      
+      if (!rut) {
+        alert('Ingresa el RUT del fallecido');
+        return;
+      }
+      
+      // Simular búsqueda por RUT (aquí conectarías con tu backend)
+      console.log('Buscando por RUT:', rut);
+      
+      // Mostrar resultados de ejemplo
+      showResults();
+    });
+    
+    function showResults() {
+      document.getElementById('results').style.display = 'block';
+      document.getElementById('noResults').style.display = 'none';
+      
+      // Contenido de ejemplo - reemplazar con datos reales
+      document.getElementById('resultsContent').innerHTML = `
+        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-bottom:12px;">
+          <h4>Juan Pérez González</h4>
+          <p><strong>RUT:</strong> 12.345.678-9</p>
+          <p><strong>Fecha Defunción:</strong> 15/03/2024</p>
+          <p><strong>Saldo Insoluto:</strong> $1,250,000</p>
+          <p><strong>Estado:</strong> <span style="color:#28a745;">Pendiente</span></p>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
