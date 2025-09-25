@@ -42,7 +42,7 @@
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab-btn active" data-tab="rep">Representante</button>
-      <button class="tab-btn" data-tab="fal">Fallecido</button>
+      <button class="tab-btn" data-tab="fal">Causante</button>
       <button class="tab-btn" data-tab="ben">Beneficiarios</button>
       <button class="tab-btn" data-tab="docs">Documentos</button>
       <button class="tab-btn" data-tab="validacion">Validación</button>
@@ -96,9 +96,9 @@
       <!-- FALLECIDO -->
       <section id="fal" class="section">
         <fieldset>
-          <legend><b>Datos del Fallecido</b></legend>
+          <legend><b>Datos del Causante</b></legend>
           <div class="row">
-            <label>RUT Fallecido
+            <label>RUT Causante
               <input id="fal_rut" type="text" placeholder="12.345.678-9" required
                      pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]">
             </label>
@@ -184,25 +184,28 @@
       <section id="docs" class="section">
         <fieldset>
           <legend><b>Documentos</b></legend>
-          <div class="row">
-            <label>Documento 1
-              <input type="file" id="doc1" />
-            </label>
-            <label>Documento 2
-              <input type="file" id="doc2" />
+          <div id="documentos-container">
+            <div class="row">
+              <label>Documento 1
+                <input type="file" name="documento[]" />
+              </label>
+              <label>Documento 2
+                <input type="file" name="documento[]" />
+              </label>
+            </div>
+            <div class="row">
+              <label>Documento 3
+                <input type="file" name="documento[]" />
+              </label>
+              <label>Documento 4
+                <input type="file" name="documento[]" />
+              </label>
+            </div>
+            <label>Documento 5
+              <input type="file" name="documento[]" />
             </label>
           </div>
-          <div class="row">
-            <label>Documento 3
-              <input type="file" id="doc3" />
-            </label>
-            <label>Documento 4
-              <input type="file" id="doc4" />
-            </label>
-          </div>
-          <label>Documento 5
-            <input type="file" id="doc5" />
-          </label>
+          <button type="button" class="btn btn-ok" id="addDocBtn" style="margin-top:10px;">+ Agregar otro documento</button>
         </fieldset>
         <div class="actions">
           <button type="button" class="btn btn-secondary" onclick="goTab('ben')">← Volver</button>
@@ -270,6 +273,17 @@
     tabButtons.forEach(b => b.addEventListener("click", () => goTab(b.dataset.tab)));
 
     // ----- Beneficiarios dinámicos -----
+
+    // ----- Documentos dinámicos -----
+    let docCount = 5;
+    document.getElementById('addDocBtn').addEventListener('click', function() {
+      docCount++;
+      const container = document.getElementById('documentos-container');
+      const newDiv = document.createElement('div');
+      newDiv.className = 'row';
+      newDiv.innerHTML = `<label>Documento ${docCount}<input type="file" name="documento[]" /></label>`;
+      container.appendChild(newDiv);
+    });
     const tbody = document.querySelector("#tablaBen tbody");
     function agregarBeneficiario() {
       const nombre = document.getElementById("ben_nombre").value.trim();
