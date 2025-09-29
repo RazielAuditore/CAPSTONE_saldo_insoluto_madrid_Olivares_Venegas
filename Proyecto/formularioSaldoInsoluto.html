@@ -7,7 +7,22 @@
   <style>
     :root { --c1:#0d6efd; --c2:#f8f9fa; --b:#212529; --muted:#6c757d; --ok:#28a745; --bad:#dc3545; }
     * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; margin: 20px; background:#f5f7fb; color:#222; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: linear-gradient(120deg, #e3f0ff 0%, #f7e3e3 100%, #f5f7fb 100%);
+      color: #222;
+      min-height: 100vh;
+    }
+    .logo-ips {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      width: 220px;
+      max-width: 30vw;
+      height: auto;
+    }
     h1 { margin: 0 0 16px; }
     .card { background:#fff; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.06); overflow:hidden; }
     .tabs { display:flex; gap:8px; padding:12px; background:var(--c2); border-bottom:1px solid #e9ecef; flex-wrap: wrap; }
@@ -21,6 +36,18 @@
     input, select, textarea { width:100%; padding:10px; margin-top:6px; border:1px solid #ced4da; border-radius:8px; background:#fff; }
     .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     .row3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
+    .region-comuna-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: end;
+    }
+    .region-comuna-row label {
+      margin-bottom: 0;
+    }
+    @media (max-width: 700px) {
+      .region-comuna-row { grid-template-columns: 1fr; }
+    }
     .actions { display:flex; justify-content:space-between; gap:12px; margin-top:18px; flex-wrap: wrap; }
     .btn { padding:10px 14px; border:none; border-radius:8px; cursor:pointer; }
     .btn-primary { background:var(--c1); color:#fff; }
@@ -37,6 +64,7 @@
   </style>
 </head>
 <body>
+  <img src="img/IPS_ChileAtiende_logo.png.png" alt="IPS ChileAtiende" class="logo-ips" />
   <h1>Formulario — Saldo Insoluto</h1>
   <div class="card">
     <!-- Tabs -->
@@ -121,17 +149,40 @@
             <label>Apellido Materno
               <input id="fal_ap_mat" type="text">
             </label>
-            <label>Dirección
-              <input id="fal_dir" type="text">
+        </div>
+        <div class="row region-comuna-row">
+            <label style="flex:1; min-width:180px; max-width:260px;">Región de fallecimiento
+              <select id="fal_region" style="width:100%">
+                <option value="">Seleccione región...</option>
+                <option value="Arica y Parinacota">Arica y Parinacota</option>
+                <option value="Tarapacá">Tarapacá</option>
+                <option value="Antofagasta">Antofagasta</option>
+                <option value="Atacama">Atacama</option>
+                <option value="Coquimbo">Coquimbo</option>
+                <option value="Valparaíso">Valparaíso</option>
+                <option value="Metropolitana de Santiago">Metropolitana de Santiago</option>
+                <option value="Libertador General Bernardo O'Higgins">Libertador General Bernardo O'Higgins</option>
+                <option value="Maule">Maule</option>
+                <option value="Ñuble">Ñuble</option>
+                <option value="Biobío">Biobío</option>
+                <option value="La Araucanía">La Araucanía</option>
+                <option value="Los Ríos">Los Ríos</option>
+                <option value="Los Lagos">Los Lagos</option>
+                <option value="Aysén del General Carlos Ibáñez del Campo">Aysén del General Carlos Ibáñez del Campo</option>
+                <option value="Magallanes y de la Antártica Chilena">Magallanes y de la Antártica Chilena</option>
+              </select>
+            </label>
+            <label style="flex:1; min-width:180px; max-width:260px;">Comuna de fallecimiento
+              <select id="fal_comuna" style="width:100%">
+                <option value="">Seleccione comuna...</option>
+              </select>
             </label>
           </div>
           <div class="row">
-            <label>Fecha Nacimiento
-              <input id="fal_fnac" type="date">
-            </label>
             <label>Fecha Defunción
               <input id="fal_fdef" type="date">
             </label>
+            <!-- Fecha de nacimiento eliminada -->
           </div>
           <label>Observación
             <textarea id="fal_obs"></textarea>
@@ -157,7 +208,24 @@
                      pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]">
             </label>
             <label>Parentesco
-              <input id="ben_parentesco" type="text" placeholder="Hijo/a, Cónyuge, etc.">
+              <select id="ben_parentesco">
+                <option value="">Seleccione...</option>
+                <option>Cónyuge (esposo/a sobreviviente)</option>
+                <option>Conviviente civil</option>
+                <option>Hijos/as</option>
+                <option>Nietos/as (cuando heredan por representación de un hijo fallecido)</option>
+                <option>Padres</option>
+                <option>Madre o padre sobreviviente</option>
+                <option>Abuelos/as</option>
+                <option>Hermanos/as</option>
+                <option>Sobrinos/as (heredan por representación de un hermano fallecido)</option>
+                <option>Tíos/as</option>
+                <option>Sobrinos/as nietos/as (hijos de tus sobrinos)</option>
+                <option>Primos/as hermanos/as (hijos de tus tíos)</option>
+                <option>Tíos/as abuelos/as (hermanos de tus abuelos)</option>
+                <option>Primos/as segundos/as (hijos de primos hermanos)</option>
+                <option>Parientes más lejanos hasta el 6º grado de consanguinidad</option>
+              </select>
             </label>
           </div>
           <div class="actions">
@@ -263,6 +331,44 @@
   </div>
 
   <script>
+    // --- Comunas por región ---
+    const comunasPorRegion = {
+      "Arica y Parinacota": ["Arica", "Camarones", "Putre", "General Lagos"],
+      "Tarapacá": ["Iquique", "Alto Hospicio", "Pozo Almonte", "Camiña", "Colchane", "Huara", "Pica"],
+      "Antofagasta": ["Antofagasta", "Mejillones", "Sierra Gorda", "Taltal", "Calama", "Ollagüe", "San Pedro de Atacama", "Tocopilla", "María Elena"],
+      "Atacama": ["Copiapó", "Caldera", "Tierra Amarilla", "Chañaral", "Diego de Almagro", "Vallenar", "Alto del Carmen", "Freirina", "Huasco"],
+      "Coquimbo": ["La Serena", "Coquimbo", "Andacollo", "La Higuera", "Paiguano", "Vicuña", "Illapel", "Canela", "Los Vilos", "Salamanca", "Ovalle", "Combarbalá", "Monte Patria", "Punitaqui", "Río Hurtado"],
+      "Valparaíso": ["Valparaíso", "Casablanca", "Concón", "Juan Fernández", "Puchuncaví", "Quintero", "Viña del Mar", "Quilpué", "Limache", "Olmué", "Villa Alemana", "Isla de Pascua", "Los Andes", "Calle Larga", "Rinconada", "San Esteban", "La Ligua", "Cabildo", "Papudo", "Petorca", "Zapallar", "Quillota", "Calera", "Hijuelas", "La Cruz", "Nogales", "San Antonio", "Algarrobo", "Cartagena", "El Quisco", "El Tabo", "Santo Domingo", "San Felipe", "Catemu", "Llaillay", "Panquehue", "Putaendo", "Santa María"],
+      "Metropolitana de Santiago": ["Cerrillos", "Cerro Navia", "Conchalí", "El Bosque", "Estación Central", "Huechuraba", "Independencia", "La Cisterna", "La Florida", "La Granja", "La Pintana", "La Reina", "Las Condes", "Lo Barnechea", "Lo Espejo", "Lo Prado", "Macul", "Maipú", "Ñuñoa", "Pedro Aguirre Cerda", "Peñalolén", "Providencia", "Pudahuel", "Quilicura", "Quinta Normal", "Recoleta", "Renca", "San Joaquín", "San Miguel", "San Ramón", "Vitacura", "Puente Alto", "Pirque", "San José de Maipo", "Colina", "Lampa", "Tiltil", "San Bernardo", "Buin", "Calera de Tango", "Paine", "Melipilla", "Alhué", "Curacaví", "María Pinto", "San Pedro", "Talagante", "El Monte", "Isla de Maipo", "Padre Hurtado", "Peñaflor"],
+      "Libertador General Bernardo O'Higgins": ["Rancagua", "Codegua", "Coinco", "Coltauco", "Doñihue", "Graneros", "Las Cabras", "Machalí", "Malloa", "Mostazal", "Olivar", "Peumo", "Pichidegua", "Quinta de Tilcoco", "Rengo", "Requínoa", "San Vicente", "Pichilemu", "La Estrella", "Litueche", "Marchihue", "Navidad", "Paredones", "San Fernando", "Chépica", "Chimbarongo", "Lolol", "Nancagua", "Palmilla", "Peralillo", "Placilla", "Pumanque", "Santa Cruz"],
+      "Maule": ["Talca", "Constitución", "Curepto", "Empedrado", "Maule", "Pelarco", "Pencahue", "Río Claro", "San Clemente", "San Rafael", "Cauquenes", "Chanco", "Pelluhue", "Curicó", "Hualañé", "Licantén", "Molina", "Rauco", "Romeral", "Sagrada Familia", "Teno", "Vichuquén", "Linares", "Colbún", "Longaví", "Parral", "Retiro", "San Javier", "Villa Alegre", "Yerbas Buenas"],
+      "Ñuble": ["Chillán", "Bulnes", "Cobquecura", "Coelemu", "Coihueco", "Chillán Viejo", "El Carmen", "Ninhue", "Ñiquén", "Pemuco", "Pinto", "Portezuelo", "Quillón", "Quirihue", "Ránquil", "San Carlos", "San Fabián", "San Ignacio", "San Nicolás", "Treguaco", "Yungay"],
+      "Biobío": ["Concepción", "Coronel", "Chiguayante", "Florida", "Hualpén", "Hualqui", "Lota", "Penco", "San Pedro de la Paz", "Santa Juana", "Talcahuano", "Tomé", "Hualqui", "Cabrero", "Laja", "Los Ángeles", "Mulchén", "Nacimiento", "Negrete", "Quilaco", "Quilleco", "San Rosendo", "Santa Bárbara", "Tucapel", "Yumbel", "Alto Biobío"],
+      "La Araucanía": ["Temuco", "Carahue", "Cunco", "Curarrehue", "Freire", "Galvarino", "Gorbea", "Lautaro", "Loncoche", "Melipeuco", "Nueva Imperial", "Padre Las Casas", "Perquenco", "Pitrufquén", "Pucón", "Saavedra", "Teodoro Schmidt", "Toltén", "Vilcún", "Villarrica", "Cholchol", "Angol", "Collipulli", "Curacautín", "Ercilla", "Lonquimay", "Los Sauces", "Lumaco", "Purén", "Renaico", "Traiguén", "Victoria"],
+      "Los Ríos": ["Valdivia", "Corral", "Lanco", "Los Lagos", "Máfil", "Mariquina", "Paillaco", "Panguipulli", "La Unión", "Futrono", "Lago Ranco", "Río Bueno"],
+      "Los Lagos": ["Puerto Montt", "Calbuco", "Cochamó", "Fresia", "Frutillar", "Los Muermos", "Llanquihue", "Maullín", "Puerto Varas", "Castro", "Ancud", "Chonchi", "Curaco de Vélez", "Dalcahue", "Puqueldón", "Queilén", "Quellón", "Quemchi", "Quinchao", "Osorno", "Puerto Octay", "Purranque", "Puyehue", "Río Negro", "San Juan de la Costa", "San Pablo"],
+      "Aysén del General Carlos Ibáñez del Campo": ["Coyhaique", "Lago Verde", "Aysén", "Cisnes", "Guaitecas", "Cochrane", "O'Higgins", "Tortel", "Chile Chico", "Río Ibáñez"],
+      "Magallanes y de la Antártica Chilena": ["Punta Arenas", "Laguna Blanca", "Río Verde", "San Gregorio", "Cabo de Hornos", "Antártica", "Porvenir", "Primavera", "Timaukel", "Natales", "Torres del Paine"]
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const regionSelect = document.getElementById('fal_region');
+      const comunaSelect = document.getElementById('fal_comuna');
+      // Al cargar la página, solo mostrar la opción por defecto
+      comunaSelect.innerHTML = '<option value="">Seleccione comuna...</option>';
+      regionSelect.addEventListener('change', function() {
+        const region = regionSelect.value;
+        comunaSelect.innerHTML = '<option value="">Seleccione comuna...</option>';
+        if (comunasPorRegion[region]) {
+          comunasPorRegion[region].forEach(comuna => {
+            const opt = document.createElement('option');
+            opt.value = comuna;
+            opt.textContent = comuna;
+            comunaSelect.appendChild(opt);
+          });
+        }
+      });
+    });
     // ----- Tabs -----
     const tabButtons = document.querySelectorAll(".tab-btn");
     function goTab(id) {
@@ -288,7 +394,7 @@
     function agregarBeneficiario() {
       const nombre = document.getElementById("ben_nombre").value.trim();
       const run = document.getElementById("ben_run").value.trim();
-      const par = document.getElementById("ben_parentesco").value.trim();
+  const par = document.getElementById("ben_parentesco").value;
       if (!nombre || !run) { alert("Completa nombre y RUN del beneficiario"); return; }
 
       const tr = document.createElement("tr");

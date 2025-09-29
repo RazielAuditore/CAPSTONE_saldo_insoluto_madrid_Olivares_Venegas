@@ -7,8 +7,23 @@
   <style>
     :root { --c1:#0d6efd; --cBg:#f6f7fb; --text:#333; --border:#e5e7eb; }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: Arial, sans-serif; background:var(--cBg); color:var(--text); height:100vh; display:flex; }
-    .sidebar { width:260px; background:#fff; border-right:1px solid var(--border); padding:20px 14px; display:flex; flex-direction:column; gap:10px; }
+      body {
+        margin:0;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(120deg, #e3f0ff 0%, #f7e3e3 100%, #f5f7fb 100%);
+        color:var(--text);
+        height:100vh;
+        display:flex;
+      }
+    .sidebar {
+      width:260px;
+      background: linear-gradient(160deg, #fff4f4 0%, #ffd6d6 100%);
+      border-right:1px solid var(--border);
+      padding:20px 14px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
     .brand { font-weight:bold; font-size:18px; margin-bottom:12px; }
     .nav { display:flex; flex-direction:column; gap:8px; }
     .nav a { display:block; padding:12px 14px; border:1px solid var(--border); border-radius:10px; color:#1f2937; text-decoration:none; background:#fff; transition:background .2s, border-color .2s; }
