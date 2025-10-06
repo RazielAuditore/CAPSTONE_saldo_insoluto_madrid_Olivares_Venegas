@@ -60,7 +60,40 @@
     .muted { color: var(--muted); font-size: 13px; }
     .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; background:#eef; margin-left:8px; }
     .badge.ok { background:#e6f6ea; color:#0f7a2e; }
-    @media (max-width: 700px) { .row, .row3 { grid-template-columns: 1fr; } }
+    
+    /* Estilos para documentos */
+    .documento-item {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      background-color: #f8f9fa;
+    }
+    
+    .tipo-documento-select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 14px;
+      background-color: white;
+    }
+    
+    .tipo-documento-select:focus {
+      outline: none;
+      border-color: var(--c1);
+      box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+    }
+    
+    .col-md-6 {
+      flex: 0 0 50%;
+      padding: 0 10px;
+    }
+    
+    @media (max-width: 700px) { 
+      .row, .row3 { grid-template-columns: 1fr; } 
+      .col-md-6 { flex: 0 0 100%; padding: 0; }
+    }
   </style>
 </head>
 <body>
@@ -77,18 +110,17 @@
       <button class="tab-btn" data-tab="enviar">Enviar</button>
     </div>
 
-    <form id="formSaldo" onsubmit="handleSubmit(event)">
+    <form id="formSaldo" onsubmit="handleSubmit(event)" method="post" novalidate>
       <!-- REPRESENTANTE -->
       <section id="rep" class="section active">
         <fieldset>
           <legend><b>Datos del Representante</b></legend>
           <div class="row">
             <label>RUT Representante
-              <input id="rep_rut" type="text" placeholder="12.345.678-9" required
-                     pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]">
+              <input id="rep_rut" name="rep_rut" type="text" placeholder="12.345.678-9" required>
             </label>
             <label>Calidad
-              <select id="rep_calidad">
+              <select id="rep_calidad" name="rep_calidad">
                 <option value="Heredero">Heredero</option>
                 <option value="Representante con poder">Representante con poder</option>
                 <option value="Curador">Curador</option>
@@ -97,22 +129,33 @@
           </div>
           <div class="row">
             <label>Nombres
-              <input id="rep_nombres" type="text" required>
+              <input id="rep_nombre" name="rep_nombre" type="text" required>
             </label>
             <label>Apellido Paterno
-              <input id="rep_ap_pat" type="text" required>
+              <input id="rep_apellido_p" name="rep_apellido_p" type="text" required>
             </label>
           </div>
           <div class="row">
             <label>Apellido Materno
-              <input id="rep_ap_mat" type="text">
+              <input id="rep_apellido_m" name="rep_apellido_m" type="text">
             </label>
             <label>Teléfono
-              <input id="rep_tel" type="tel" placeholder="+56 9 1234 5678">
+              <input id="rep_telefono" name="rep_telefono" type="tel" placeholder="+56 9 1234 5678">
             </label>
           </div>
           <label>Domicilio
-            <input id="rep_dom" type="text">
+            <input id="rep_direccion" name="rep_direccion" type="text">
+          </label>
+          <div class="row">
+            <label>Comuna
+              <input id="rep_comuna" name="rep_comuna" type="text">
+            </label>
+            <label>Región
+              <input id="rep_region" name="rep_region" type="text">
+            </label>
+          </div>
+          <label>Email
+            <input id="rep_email" name="rep_email" type="email">
           </label>
         </fieldset>
         <div class="actions">
@@ -127,11 +170,10 @@
           <legend><b>Datos del Causante</b></legend>
           <div class="row">
             <label>RUT Causante
-              <input id="fal_rut" type="text" placeholder="12.345.678-9" required
-                     pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]">
+              <input id="fal_run" name="fal_run" type="text" placeholder="12.345.678-9" required>
             </label>
             <label>Nacionalidad
-              <select id="fal_nac">
+              <select id="fal_nac" name="fal_nac">
                 <option value="Chileno/a">Chileno/a</option>
                 <option value="Extranjero/a">Extranjero/a</option>
               </select>
@@ -139,28 +181,28 @@
           </div>
           <div class="row">
             <label>Nombres
-              <input id="fal_nombres" type="text" required>
+              <input id="fal_nombre" name="fal_nombre" type="text" required>
             </label>
             <label>Apellido Paterno
-              <input id="fal_ap_pat" type="text" required>
+              <input id="fal_apellido_p" name="fal_apellido_p" type="text" required>
             </label>
           </div>
           <div class="row">
             <label>Apellido Materno
-              <input id="fal_ap_mat" type="text">
+              <input id="fal_apellido_m" name="fal_apellido_m" type="text">
             </label>
             <label>Fecha Defunción
-              <input id="fal_fdef" type="date">
+              <input id="fal_fecha_defuncion" name="fal_fecha_defuncion" type="date">
             </label>
         </div>
         <div class="row region-comuna-row">
             <!-- Región de fallecimiento eliminada -->
             <label style="flex:1; min-width:180px; max-width:260px;">Comuna de fallecimiento
-              <input id="fal_comuna" type="text" maxlength="50" placeholder="Ingrese comuna...">
+              <input id="fal_comuna_defuncion" name="fal_comuna_defuncion" type="text" maxlength="50" placeholder="Ingrese comuna...">
             </label>
           </div>
-          <label>Observación
-            <textarea id="fal_obs"></textarea>
+          <label>Motivo de la solicitud
+            <textarea id="motivo_solicitud" name="motivo_solicitud"></textarea>
           </label>
         </fieldset>
         <div class="actions">
@@ -228,25 +270,130 @@
         <fieldset>
           <legend><b>Documentos</b></legend>
           <div id="documentos-container">
-            <div class="row">
-              <label>Documento 1
-                <input type="file" name="documento[]" />
-              </label>
-              <label>Documento 2
-                <input type="file" name="documento[]" />
-              </label>
+            <!-- Documento 1 -->
+            <div class="documento-item">
+              <div class="row">
+                <div class="col-md-6">
+                  <label>Tipo de Documento
+                    <select name="tipo_documento[]" class="tipo-documento-select" required>
+                      <option value="">Seleccione el tipo de documento</option>
+                      <option value="1">Certificado de Defunción</option>
+                      <option value="2">Certificado de Nacimiento</option>
+                      <option value="3">Certificado de Matrimonio</option>
+                      <option value="4">Cédula de Identidad</option>
+                      <option value="5">Poder Notarial</option>
+                      <option value="6">Resolución de Posesión Efectiva</option>
+                      <option value="7">Otros Documentos</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="col-md-6">
+                  <label>Archivo
+                    <input type="file" name="documento[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required />
+                  </label>
+                </div>
+              </div>
             </div>
-            <div class="row">
-              <label>Documento 3
-                <input type="file" name="documento[]" />
-              </label>
-              <label>Documento 4
-                <input type="file" name="documento[]" />
-              </label>
+
+            <!-- Documento 2 -->
+            <div class="documento-item">
+              <div class="row">
+                <div class="col-md-6">
+                  <label>Tipo de Documento
+                    <select name="tipo_documento[]" class="tipo-documento-select">
+                      <option value="">Seleccione el tipo de documento</option>
+                      <option value="1">Certificado de Defunción</option>
+                      <option value="2">Certificado de Nacimiento</option>
+                      <option value="3">Certificado de Matrimonio</option>
+                      <option value="4">Cédula de Identidad</option>
+                      <option value="5">Poder Notarial</option>
+                      <option value="6">Resolución de Posesión Efectiva</option>
+                      <option value="7">Otros Documentos</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="col-md-6">
+                  <label>Archivo
+                    <input type="file" name="documento[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                  </label>
+                </div>
+              </div>
             </div>
-            <label>Documento 5
-              <input type="file" name="documento[]" />
-            </label>
+
+            <!-- Documento 3 -->
+            <div class="documento-item">
+              <div class="row">
+                <div class="col-md-6">
+                  <label>Tipo de Documento
+                    <select name="tipo_documento[]" class="tipo-documento-select">
+                      <option value="">Seleccione el tipo de documento</option>
+                      <option value="1">Certificado de Defunción</option>
+                      <option value="2">Certificado de Nacimiento</option>
+                      <option value="3">Certificado de Matrimonio</option>
+                      <option value="4">Cédula de Identidad</option>
+                      <option value="5">Poder Notarial</option>
+                      <option value="6">Resolución de Posesión Efectiva</option>
+                      <option value="7">Otros Documentos</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="col-md-6">
+                  <label>Archivo
+                    <input type="file" name="documento[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Documento 4 -->
+            <div class="documento-item">
+              <div class="row">
+                <div class="col-md-6">
+                  <label>Tipo de Documento
+                    <select name="tipo_documento[]" class="tipo-documento-select">
+                      <option value="">Seleccione el tipo de documento</option>
+                      <option value="1">Certificado de Defunción</option>
+                      <option value="2">Certificado de Nacimiento</option>
+                      <option value="3">Certificado de Matrimonio</option>
+                      <option value="4">Cédula de Identidad</option>
+                      <option value="5">Poder Notarial</option>
+                      <option value="6">Resolución de Posesión Efectiva</option>
+                      <option value="7">Otros Documentos</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="col-md-6">
+                  <label>Archivo
+                    <input type="file" name="documento[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Documento 5 -->
+            <div class="documento-item">
+              <div class="row">
+                <div class="col-md-6">
+                  <label>Tipo de Documento
+                    <select name="tipo_documento[]" class="tipo-documento-select">
+                      <option value="">Seleccione el tipo de documento</option>
+                      <option value="1">Certificado de Defunción</option>
+                      <option value="2">Certificado de Nacimiento</option>
+                      <option value="3">Certificado de Matrimonio</option>
+                      <option value="4">Cédula de Identidad</option>
+                      <option value="5">Poder Notarial</option>
+                      <option value="6">Resolución de Posesión Efectiva</option>
+                      <option value="7">Otros Documentos</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="col-md-6">
+                  <label>Archivo
+                    <input type="file" name="documento[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
           <button type="button" class="btn btn-ok" id="addDocBtn" style="margin-top:10px;">+ Agregar otro documento</button>
         </fieldset>
@@ -261,20 +408,20 @@
         <fieldset>
           <legend><b>Validación y Expedición</b></legend>
           <label>Sucursal de expedición
-            <input type="text" id="sucursal" placeholder="Ej: IPS Providencia">
+            <input type="text" id="sucursal" name="sucursal" placeholder="Ej: IPS Providencia">
           </label>
 
           <div class="row">
             <div>
               <label>Clave del Representante (para firmar)
-                <input type="password" id="pass_rep" placeholder="•••••••">
+                <input type="password" id="pass_rep" name="pass_rep" placeholder="•••••••">
               </label>
               <button type="button" class="btn btn-ok" onclick="firmarRepresentante()">Firmar Representante</button>
               <span id="badge_rep" class="badge" style="display:none;">Sin firma</span>
             </div>
             <div>
               <label>Clave del Funcionario (para firmar)
-                <input type="password" id="pass_func" placeholder="•••••••">
+                <input type="password" id="pass_func" name="pass_func" placeholder="•••••••">
               </label>
               <button type="button" class="btn btn-ok" onclick="firmarFuncionario()">Firmar Funcionario</button>
               <span id="badge_func" class="badge" style="display:none;">Sin firma</span>
@@ -295,10 +442,10 @@
       <section id="enviar" class="section">
         <fieldset>
           <legend><b>Revisión y Envío</b></legend>
-          <p class="muted">Al enviar, se descargará un JSON con todo el formulario y ambas firmas (si existen).</p>
+          <p class="muted">Al enviar, los datos se guardarán en la base de datos y se generará un ID único para el saldo insoluto. También se descargará un archivo JSON de respaldo.</p>
           <div class="actions">
             <button type="button" class="btn btn-secondary" onclick="goTab('validacion')">← Volver</button>
-            <button type="submit" class="btn btn-ok">Enviar</button>
+            <button type="submit" class="btn btn-ok">Guardar Solicitud</button>
           </div>
         </fieldset>
       </section>
@@ -306,6 +453,12 @@
   </div>
 
   <script>
+    // Variables globales
+    let currentTab = 'rep';
+    let beneficiarios = [];
+
+
+
     // --- Comunas por región ---
     const comunasPorRegion = {
       "Arica y Parinacota": ["Arica", "Camarones", "Putre", "General Lagos"],
@@ -327,22 +480,27 @@
     };
 
     document.addEventListener('DOMContentLoaded', function() {
+      // Verificar que los elementos existan antes de usarlos
       const regionSelect = document.getElementById('fal_region');
       const comunaSelect = document.getElementById('fal_comuna');
-      // Al cargar la página, solo mostrar la opción por defecto
-      comunaSelect.innerHTML = '<option value="">Seleccione comuna...</option>';
-      regionSelect.addEventListener('change', function() {
-        const region = regionSelect.value;
+      
+      // Solo ejecutar si los elementos existen
+      if (regionSelect && comunaSelect) {
+        // Al cargar la página, solo mostrar la opción por defecto
         comunaSelect.innerHTML = '<option value="">Seleccione comuna...</option>';
-        if (comunasPorRegion[region]) {
-          comunasPorRegion[region].forEach(comuna => {
-            const opt = document.createElement('option');
-            opt.value = comuna;
-            opt.textContent = comuna;
-            comunaSelect.appendChild(opt);
-          });
-        }
-      });
+        regionSelect.addEventListener('change', function() {
+          const region = regionSelect.value;
+          comunaSelect.innerHTML = '<option value="">Seleccione comuna...</option>';
+          if (comunasPorRegion[region]) {
+            comunasPorRegion[region].forEach(comuna => {
+              const opt = document.createElement('option');
+              opt.value = comuna;
+              opt.textContent = comuna;
+              comunaSelect.appendChild(opt);
+            });
+          }
+        });
+      }
     });
     // ----- Tabs -----
     const tabButtons = document.querySelectorAll(".tab-btn");
@@ -361,8 +519,30 @@
       docCount++;
       const container = document.getElementById('documentos-container');
       const newDiv = document.createElement('div');
-      newDiv.className = 'row';
-      newDiv.innerHTML = `<label>Documento ${docCount}<input type="file" name="documento[]" /></label>`;
+      newDiv.className = 'documento-item';
+      newDiv.innerHTML = `
+        <div class="row">
+          <div class="col-md-6">
+            <label>Tipo de Documento
+              <select name="tipo_documento[]" class="tipo-documento-select">
+                <option value="">Seleccione el tipo de documento</option>
+                <option value="1">Certificado de Defunción</option>
+                <option value="2">Certificado de Nacimiento</option>
+                <option value="3">Certificado de Matrimonio</option>
+                <option value="4">Cédula de Identidad</option>
+                <option value="5">Poder Notarial</option>
+                <option value="6">Resolución de Posesión Efectiva</option>
+                <option value="7">Otros Documentos</option>
+              </select>
+            </label>
+          </div>
+          <div class="col-md-6">
+            <label>Archivo
+              <input type="file" name="documento[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+            </label>
+          </div>
+        </div>
+      `;
       container.appendChild(newDiv);
     });
     const tbody = document.querySelector("#tablaBen tbody");
@@ -409,10 +589,10 @@
     function buildPayload() {
       // Puedes agregar más campos si quieres que queden “bajo firma”
       return [
-        document.getElementById("fal_rut").value,
-        document.getElementById("fal_nombres").value,
-        document.getElementById("fal_ap_pat").value,
-        document.getElementById("fal_fdef").value || "",
+        document.getElementById("fal_run").value,
+        document.getElementById("fal_nombre").value,
+        document.getElementById("fal_apellido_p").value,
+        document.getElementById("fal_fecha_defuncion").value || "",
         document.getElementById("sucursal").value || ""
       ].join("|");
     }
@@ -451,71 +631,144 @@
       alert("✅ Firma del Funcionario generada");
     }
 
-    // ----- Enviar (descarga JSON con todo) -----
-    function handleSubmit(e) {
+    // ----- Enviar (guardar en base de datos) -----
+    async function handleSubmit(e) {
+      console.log('🚀 handleSubmit ejecutándose...');
       e.preventDefault();
 
-      // Validación rápida de fechas (si ambas existen)
-      const fn = document.getElementById("fal_fnac").value;
-      const fd = document.getElementById("fal_fdef").value;
-      if (fn && fd && new Date(fn) >= new Date(fd)) {
-        alert("⚠ La fecha de nacimiento debe ser menor que la fecha de defunción.");
-        goTab('fal'); return;
-      }
+      // Mostrar loading
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      const originalText = submitBtn.textContent;
+      submitBtn.textContent = 'Guardando...';
+      submitBtn.disabled = true;
+      
+      console.log('📝 Botón actualizado a:', submitBtn.textContent);
 
-      const data = {
-        representante: {
-          rut: document.getElementById("rep_rut").value,
-          calidad: document.getElementById("rep_calidad").value,
-          nombres: document.getElementById("rep_nombres").value,
-          ap_paterno: document.getElementById("rep_ap_pat").value,
-          ap_materno: document.getElementById("rep_ap_mat").value,
-          telefono: document.getElementById("rep_tel").value,
-          domicilio: document.getElementById("rep_dom").value
-        },
-        fallecido: {
-          rut: document.getElementById("fal_rut").value,
-          nacionalidad: document.getElementById("fal_nac").value,
-          nombres: document.getElementById("fal_nombres").value,
-          ap_paterno: document.getElementById("fal_ap_pat").value,
-          ap_materno: document.getElementById("fal_ap_mat").value,
-          direccion: document.getElementById("fal_dir").value,
-          fecha_nacimiento: document.getElementById("fal_fnac").value,
-          fecha_defuncion: document.getElementById("fal_fdef").value,
-          observacion: document.getElementById("fal_obs").value
-        },
-        beneficiarios: Array.from(tbody.querySelectorAll("tr")).map(tr => {
+      try {
+        // Validar que los datos básicos estén completos
+        const rutRep = document.getElementById("rep_rut")?.value || "";
+        const nombresRep = document.getElementById("rep_nombre")?.value || "";
+        const apPatRep = document.getElementById("rep_apellido_p")?.value || "";
+        const rutFal = document.getElementById("fal_run")?.value || "";
+        const nombresFal = document.getElementById("fal_nombre")?.value || "";
+        const apPatFal = document.getElementById("fal_apellido_p")?.value || "";
+
+        if (!rutRep || !nombresRep || !apPatRep || !rutFal || !nombresFal || !apPatFal) {
+          alert("⚠ Por favor completa los datos básicos del representante y fallecido antes de enviar.");
+          goTab('rep');
+          return;
+        }
+
+
+        // Preparar datos para enviar a la API (estructura plana como espera el servidor)
+        const beneficiarios = Array.from(tbody.querySelectorAll("tr")).map(tr => {
           const tds = tr.querySelectorAll("td");
           return {
-            nombre: tds[0].textContent,
-            run: tds[1].textContent,
-            parentesco: tds[2].textContent,
-            es_representante: tr.querySelector(".esRep").checked
+            nombre: tds[0]?.textContent || "",
+            run: tds[1]?.textContent || "",
+            parentesco: tds[2]?.textContent || "",
+            es_representante: tr.querySelector(".esRep")?.checked || false
           };
-        }),
-        documentos: {
-          doc1: document.getElementById("doc1")?.files?.[0]?.name || null,
-          doc2: document.getElementById("doc2")?.files?.[0]?.name || null,
-          doc3: document.getElementById("doc3")?.files?.[0]?.name || null,
-          doc4: document.getElementById("doc4")?.files?.[0]?.name || null,
-          doc5: document.getElementById("doc5")?.files?.[0]?.name || null
-        },
-        validacion: {
-          sucursal: document.getElementById("sucursal").value,
-          firma_representante: firmaRep,
-          firma_funcionario:  firmaFunc
+        });
+
+        const data = {
+          // Datos del representante
+          rep_run: document.getElementById("rep_rut")?.value || "",
+          rep_calidad: document.getElementById("rep_calidad")?.value || "",
+          rep_nombre: document.getElementById("rep_nombre")?.value || "",
+          rep_apellido_p: document.getElementById("rep_apellido_p")?.value || "",
+          rep_apellido_m: document.getElementById("rep_apellido_m")?.value || "",
+          rep_telefono: document.getElementById("rep_telefono")?.value || "",
+          rep_direccion: document.getElementById("rep_direccion")?.value || "",
+          rep_comuna: document.getElementById("rep_comuna")?.value || "",
+          rep_region: document.getElementById("rep_region")?.value || "",
+          rep_email: document.getElementById("rep_email")?.value || "",
+          
+          // Datos del fallecido
+          fal_run: document.getElementById("fal_run")?.value || "",
+          fal_nacionalidad: document.getElementById("fal_nac")?.value || "",
+          fal_nombre: document.getElementById("fal_nombre")?.value || "",
+          fal_apellido_p: document.getElementById("fal_apellido_p")?.value || "",
+          fal_apellido_m: document.getElementById("fal_apellido_m")?.value || "",
+          fal_fecha_defuncion: document.getElementById("fal_fecha_defuncion")?.value || "",
+          fal_comuna_defuncion: document.getElementById("fal_comuna_defuncion")?.value || "",
+          
+          // Datos de la solicitud
+          monto_solicitado: 0, // Campo requerido por el servidor
+          motivo_solicitud: document.getElementById("motivo_solicitud")?.value || "",
+          sucursal: document.getElementById("sucursal")?.value || "",
+          
+          // Beneficiarios
+          beneficiarios: beneficiarios
+        };
+
+        // Debug: Mostrar valores específicos
+        console.log('🔍 Debug - Valores de campos:');
+        console.log('  fal_fecha_defuncion:', document.getElementById("fal_fecha_defuncion")?.value);
+        console.log('  fal_comuna_defuncion:', document.getElementById("fal_comuna_defuncion")?.value);
+        console.log('  fal_nombre:', document.getElementById("fal_nombre")?.value);
+        
+        // Enviar datos a la API
+        console.log('🌐 Enviando datos a la API...', data);
+        const response = await fetch('http://localhost:3001/api/solicitudes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+        
+        console.log('📡 Respuesta recibida:', response.status);
+
+        if (!response.ok) {
+          throw new Error(`Error del servidor: ${response.status}`);
         }
-      };
 
-      // Descarga JSON (demo)
-      const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "saldo_insoluto_con_firmas.json"; a.click();
-      URL.revokeObjectURL(url);
+        const resultado = await response.json();
 
-      alert("Formulario enviado ✅\nSe descargó un JSON con los datos y las firmas.");
-      goTab('enviar');
+        // Mostrar mensaje de éxito
+        alert(`✅ Solicitud guardada exitosamente!\n\nFolio: ${resultado.folio}\nID de Solicitud: ${resultado.solicitud_id}\n\nLos datos se han guardado en la base de datos.`);
+
+        // Opcional: Descargar JSON de respaldo
+        const dataCompleto = {
+          ...data,
+          folio: resultado.folio,
+          solicitud_id: resultado.solicitud_id,
+          validacion: {
+            sucursal: document.getElementById("sucursal").value,
+            firma_representante: firmaRep,
+            firma_funcionario: firmaFunc
+          }
+        };
+
+        const blob = new Blob([JSON.stringify(dataCompleto, null, 2)], {type:"application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; 
+        a.download = `saldo_insoluto_${resultado.folio}.json`; 
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // Limpiar formulario
+        document.getElementById("formSaldo").reset();
+        tbody.innerHTML = '';
+        firmaRep = null;
+        firmaFunc = null;
+        
+        // Resetear badges
+        document.getElementById("badge_rep").style.display = "none";
+        document.getElementById("badge_func").style.display = "none";
+
+        goTab('rep'); // Volver al inicio
+
+      } catch (error) {
+        console.error('Error:', error);
+        alert(`❌ Error al guardar la solicitud:\n\n${error.message}\n\nPor favor, verifica que el servidor esté corriendo y vuelve a intentar.`);
+      } finally {
+        // Restaurar botón
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+      }
     }
   </script>
 </body>
