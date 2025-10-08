@@ -61,6 +61,44 @@
     .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; background:#eef; margin-left:8px; }
     .badge.ok { background:#e6f6ea; color:#0f7a2e; }
     
+    /* Estilos para lista de archivos */
+    .archivos-lista {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      background-color: #f9f9f9;
+    }
+    
+    .archivo-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      margin: 5px 0;
+      background-color: white;
+      border: 1px solid #eee;
+      border-radius: 4px;
+    }
+    
+    .archivo-info {
+      flex: 1;
+    }
+    
+    .archivo-nombre {
+      font-weight: bold;
+      color: #333;
+    }
+    
+    .archivo-detalles {
+      font-size: 0.9em;
+      color: #666;
+    }
+    
+    .archivo-acciones {
+      display: flex;
+      gap: 10px;
+    }
+    
     /* Estilos para documentos */
     .documento-item {
       margin-bottom: 20px;
@@ -396,6 +434,14 @@
             </div>
           </div>
           <button type="button" class="btn btn-ok" id="addDocBtn" style="margin-top:10px;">+ Agregar otro documento</button>
+          
+          <!-- Sección para mostrar archivos subidos -->
+          <div id="archivos-subidos" style="margin-top: 20px; display: none;">
+            <h4>📁 Archivos Subidos</h4>
+            <div id="lista-archivos" class="archivos-lista">
+              <!-- Los archivos se mostrarán aquí dinámicamente -->
+            </div>
+          </div>
         </fieldset>
         <div class="actions">
           <button type="button" class="btn btn-secondary" onclick="goTab('ben')"> Volver</button>
@@ -631,6 +677,105 @@
       alert("✅ Firma del Funcionario generada");
     }
 
+    // ----- Subir archivos individuales -----
+    async function subirArchivo(file, solicitudId, docTipoId = 1) {
+      // Validar que solicitudId sea un número válido
+      if (!solicitudId || solicitudId === 'undefined' || isNaN(solicitudId)) {
+        throw new Error('ID de solicitud inválido para subir archivo');
+      }
+      
+      const formData = new FormData();
+      formData.append('archivo', file);
+      formData.append('solicitud_id', solicitudId);
+      formData.append('doc_tipo_id', docTipoId);
+      formData.append('observaciones', 'Subido desde formulario web');
+
+      try {
+        const response = await fetch('http://localhost:3001/api/upload-documento', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error subiendo archivo: ${response.status}`);
+        }
+
+        const resultado = await response.json();
+        console.log('📁 Archivo subido:', resultado);
+        return resultado;
+      } catch (error) {
+        console.error('❌ Error subiendo archivo:', error);
+        throw error;
+      }
+    }
+
+    // ----- Subir todos los archivos de una solicitud -----
+    async function subirTodosLosArchivos(solicitudId) {
+      const archivos = document.querySelectorAll('input[name="documento[]"]');
+      const tipos = document.querySelectorAll('select[name="tipo_documento[]"]');
+      
+      const resultados = [];
+      
+      for (let i = 0; i < archivos.length; i++) {
+        const archivo = archivos[i].files[0];
+        const tipo = tipos[i].value;
+        
+        if (archivo && tipo) {
+          try {
+            const resultado = await subirArchivo(archivo, solicitudId, tipo);
+            resultados.push(resultado);
+            console.log(`✅ Archivo ${i + 1} subido: ${archivo.name}`);
+          } catch (error) {
+            console.error(`❌ Error subiendo archivo ${i + 1}:`, error);
+            alert(`Error subiendo archivo "${archivo.name}": ${error.message}`);
+          }
+        }
+      }
+      
+      return resultados;
+    }
+
+    // ----- Mostrar archivos subidos -----
+    function mostrarArchivosSubidos(archivos) {
+      const seccionArchivos = document.getElementById('archivos-subidos');
+      const listaArchivos = document.getElementById('lista-archivos');
+      
+      // Limpiar lista anterior
+      listaArchivos.innerHTML = '';
+      
+      // Mostrar cada archivo
+      archivos.forEach(archivo => {
+        const archivoDiv = document.createElement('div');
+        archivoDiv.className = 'archivo-item';
+        
+        const tamanoMB = (archivo.data.tamano_bytes / (1024 * 1024)).toFixed(2);
+        
+        archivoDiv.innerHTML = `
+          <div class="archivo-info">
+            <div class="archivo-nombre">${archivo.data.nombre_archivo}</div>
+            <div class="archivo-detalles">
+              ${archivo.data.mime_type} • ${tamanoMB} MB • ID: ${archivo.data.documento_id}
+            </div>
+          </div>
+          <div class="archivo-acciones">
+            <button type="button" class="btn btn-primary" onclick="descargarArchivo(${archivo.data.documento_id})">
+              📥 Descargar
+            </button>
+          </div>
+        `;
+        
+        listaArchivos.appendChild(archivoDiv);
+      });
+      
+      // Mostrar la sección
+      seccionArchivos.style.display = 'block';
+    }
+
+    // ----- Descargar archivo -----
+    function descargarArchivo(documentoId) {
+      window.open(`http://localhost:3001/api/download-documento/${documentoId}`, '_blank');
+    }
+
     // ----- Enviar (guardar en base de datos) -----
     async function handleSubmit(e) {
       console.log('🚀 handleSubmit ejecutándose...');
@@ -725,15 +870,44 @@
         }
 
         const resultado = await response.json();
+        console.log('📋 Resultado completo:', resultado);
+        console.log('🆔 Solicitud ID del resultado:', resultado.data?.solicitud_id);
+        console.log('📄 Folio del resultado:', resultado.data?.folio);
+
+        // Validar que tenemos los datos necesarios
+        if (!resultado.data || !resultado.data.solicitud_id || !resultado.data.folio) {
+          console.error('❌ Estructura de respuesta incorrecta:', resultado);
+          alert('Error: No se recibieron los datos correctos del servidor');
+          return;
+        }
+
+        // Subir archivos si los hay
+        let archivosSubidos = [];
+        try {
+          archivosSubidos = await subirTodosLosArchivos(resultado.data.solicitud_id);
+          console.log('📁 Archivos subidos:', archivosSubidos);
+          
+          // Mostrar archivos subidos en la interfaz
+          if (archivosSubidos.length > 0) {
+            mostrarArchivosSubidos(archivosSubidos);
+          }
+        } catch (error) {
+          console.error('❌ Error subiendo archivos:', error);
+          // No interrumpir el flujo, solo mostrar advertencia
+        }
 
         // Mostrar mensaje de éxito
-        alert(`✅ Solicitud guardada exitosamente!\n\nFolio: ${resultado.folio}\nID de Solicitud: ${resultado.solicitud_id}\n\nLos datos se han guardado en la base de datos.`);
+        const mensajeArchivos = archivosSubidos.length > 0 
+          ? `\n\n📁 Archivos subidos: ${archivosSubidos.length}`
+          : '\n\n📁 No se subieron archivos';
+        
+        alert(`✅ Solicitud guardada exitosamente!\n\nFolio: ${resultado.data.folio}\nID de Solicitud: ${resultado.data.solicitud_id}${mensajeArchivos}\n\nLos datos se han guardado en la base de datos.`);
 
         // Opcional: Descargar JSON de respaldo
         const dataCompleto = {
           ...data,
-          folio: resultado.folio,
-          solicitud_id: resultado.solicitud_id,
+          folio: resultado.data.folio,
+          solicitud_id: resultado.data.solicitud_id,
           validacion: {
             sucursal: document.getElementById("sucursal").value,
             firma_representante: firmaRep,
@@ -745,7 +919,7 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url; 
-        a.download = `saldo_insoluto_${resultado.folio}.json`; 
+        a.download = `saldo_insoluto_${resultado.data.folio}.json`; 
         a.click();
         URL.revokeObjectURL(url);
 

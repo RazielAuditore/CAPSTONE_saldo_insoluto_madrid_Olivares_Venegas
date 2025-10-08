@@ -41,7 +41,7 @@
   <div class="login-box">
     <div class="titulo">Software de saldos insolutos</div>
     <h2>Ingresar</h2>
-    <input type="text" id="user" placeholder="Usuario">
+    <input type="text" id="rut" placeholder="RUT (ej: 12.345.678-9)">
     <input type="password" id="pass" placeholder="Contraseña">
     <button onclick="login()">Entrar</button>
     <div style="margin-top:10px;">
@@ -51,17 +51,57 @@
   </div>
 
   <script>
-    function login() {
-      const u = document.getElementById("user").value.trim();
-      const p = document.getElementById("pass").value.trim();
+    async function login() {
+      const rut = document.getElementById("rut").value.trim();
+      const password = document.getElementById("pass").value.trim();
       const msg = document.getElementById("msg");
 
-      // usuario y clave fijos (demo)
-      if (u === "admin" && p === "123456") {
-        // redirigir a la página de saldos (asegúrate que exista en el mismo folder)
-        window.location.href = "formularioSaldoInsoluto.html";
-      } else {
-        msg.textContent = "Usuario o contraseña incorrectos";
+      // Limpiar mensaje anterior
+      msg.textContent = '';
+
+      // Validar que ambos campos estén llenos
+      if (!rut || !password) {
+        msg.textContent = "Por favor complete todos los campos";
+        return;
+      }
+
+      try {
+        console.log('🚀 Enviando credenciales de login...');
+        console.log('📤 RUT:', rut);
+        console.log('📤 Password:', password);
+        
+        // Enviar credenciales al backend
+        const response = await fetch('http://localhost:3001/api/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            rut: rut,
+            password: password
+          })
+        });
+
+        console.log('📥 Respuesta recibida:', response.status, response.statusText);
+        const resultado = await response.json();
+        console.log('📥 Datos respuesta:', resultado);
+
+        if (response.ok && resultado.success) {
+          // Login exitoso - redirigir según el rol
+          if (resultado.data.rol === 'ejecutivo_plataforma') {
+            window.location.href = "Inicio.html";
+          } else if (resultado.data.rol === 'jefatura') {
+            window.location.href = "revisionSaldos.html"; // Página para jefatura
+          } else {
+            window.location.href = "formularioSaldoInsoluto.html"; // Por defecto
+          }
+        } else {
+          msg.textContent = resultado.error || "RUT o contraseña incorrectos";
+        }
+
+      } catch (error) {
+        console.error('Error en login:', error);
+        msg.textContent = "Error de conexión. Intente nuevamente.";
       }
     }
   </script>
