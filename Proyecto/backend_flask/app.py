@@ -35,6 +35,69 @@ def get_db_connection():
         print(f"❌ Error conectando a PostgreSQL: {e}")
         return None
 
+def create_firmas_beneficiarios_table():
+    """Crear tabla para almacenar firmas de beneficiarios"""
+    conn = get_db_connection()
+    if not conn:
+        print("❌ No se pudo conectar a la base de datos")
+        return False
+    
+    try:
+        cur = conn.cursor()
+        
+        # Crear tabla firmas_beneficiarios
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app.firmas_beneficiarios (
+                id SERIAL PRIMARY KEY,
+                expediente_id INTEGER NOT NULL REFERENCES app.expediente(id) ON DELETE CASCADE,
+                beneficiario_id INTEGER NOT NULL REFERENCES app.beneficiarios(id) ON DELETE CASCADE,
+                firma_hash VARCHAR(255) NOT NULL,
+                fecha_firma TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                estado VARCHAR(50) DEFAULT 'activa',
+                observaciones TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Crear índices para optimizar consultas
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_firmas_beneficiarios_expediente 
+            ON app.firmas_beneficiarios(expediente_id)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_firmas_beneficiarios_beneficiario 
+            ON app.firmas_beneficiarios(beneficiario_id)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_firmas_beneficiarios_estado 
+            ON app.firmas_beneficiarios(estado)
+        """)
+        
+        # Crear índice único para evitar firmas duplicadas
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_firmas_beneficiarios_unique 
+            ON app.firmas_beneficiarios(expediente_id, beneficiario_id) 
+            WHERE estado = 'activa'
+        """)
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print('✅ Tabla firmas_beneficiarios creada exitosamente')
+        print('✅ Índices optimizados creados')
+        return True
+        
+    except Exception as e:
+        print(f'❌ Error creando tabla firmas_beneficiarios: {e}')
+        if conn:
+            conn.rollback()
+            conn.close()
+        return False
+
 def test_connection():
     """Probar la conexión a la base de datos"""
     conn = get_db_connection()
@@ -897,8 +960,529 @@ def login():
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
+@app.route('/api/beneficiarios/<int:beneficiario_id>/firma', methods=['POST'])
+def firmar_beneficiario(beneficiario_id):
+    """Firmar como beneficiario usando contraseña de app externa"""
+    print(f"🔔 Petición de firma de beneficiario ID: {beneficiario_id}")
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        data = request.get_json()
+        
+        # Validar datos requeridos
+        if not data.get('firma_hash'):
+            return jsonify({'error': 'Firma (contraseña) es requerida'}), 400
+        
+        if not data.get('expediente_id'):
+            return jsonify({'error': 'ID de expediente es requerido'}), 400
+        
+        firma_hash = data['firma_hash']
+        expediente_id = data['expediente_id']
+        
+        cur = conn.cursor()
+        
+        # Verificar que el beneficiario existe y pertenece al expediente
+        cur.execute("""
+            SELECT id, ben_nombre, ben_run 
+            FROM app.beneficiarios 
+            WHERE id = %s AND expediente_id = %s
+        """, (beneficiario_id, expediente_id))
+        
+        beneficiario = cur.fetchone()
+        if not beneficiario:
+            return jsonify({'error': 'Beneficiario no encontrado o no pertenece al expediente'}), 404
+        
+        # Verificar si ya tiene una firma activa
+        cur.execute("""
+            SELECT id FROM app.firmas_beneficiarios 
+            WHERE beneficiario_id = %s AND expediente_id = %s AND estado = 'activa'
+        """, (beneficiario_id, expediente_id))
+        
+        if cur.fetchone():
+            return jsonify({'error': 'El beneficiario ya tiene una firma activa'}), 400
+        
+        # Insertar la firma
+        cur.execute("""
+            INSERT INTO app.firmas_beneficiarios 
+            (expediente_id, beneficiario_id, firma_hash, estado, observaciones)
+            VALUES (%s, %s, %s, 'activa', %s)
+            RETURNING id, fecha_firma
+        """, (expediente_id, beneficiario_id, firma_hash, data.get('observaciones', '')))
+        
+        firma_result = cur.fetchone()
+        firma_id = firma_result[0]
+        fecha_firma = firma_result[1]
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f'✅ Firma de beneficiario registrada: {beneficiario[1]}')
+        
+        return jsonify({
+            'success': True,
+            'message': 'Firma de beneficiario registrada exitosamente',
+            'data': {
+                'firma_id': firma_id,
+                'beneficiario_id': beneficiario_id,
+                'expediente_id': expediente_id,
+                'fecha_firma': fecha_firma.isoformat(),
+                'beneficiario': {
+                    'nombre': beneficiario[1],
+                    'rut': beneficiario[2]
+                }
+            }
+        }), 201
+        
+    except Exception as e:
+        print(f'❌ Error firmando beneficiario: {e}')
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/expediente/<int:expediente_id>/firmas-beneficiarios', methods=['GET'])
+def obtener_firmas_beneficiarios(expediente_id):
+    """Obtener todas las firmas de beneficiarios de un expediente"""
+    print(f"🔔 Consultando firmas de beneficiarios para expediente: {expediente_id}")
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Obtener firmas con datos de beneficiarios
+        cur.execute("""
+            SELECT 
+                fb.id as firma_id,
+                fb.fecha_firma,
+                fb.estado as estado_firma,
+                fb.observaciones,
+                b.id as beneficiario_id,
+                b.ben_nombre,
+                b.ben_run
+            FROM app.firmas_beneficiarios fb
+            JOIN app.beneficiarios b ON fb.beneficiario_id = b.id
+            WHERE fb.expediente_id = %s AND fb.estado = 'activa'
+            ORDER BY fb.fecha_firma DESC
+        """, (expediente_id,))
+        
+        firmas = cur.fetchall()
+        
+        # Obtener total de beneficiarios del expediente
+        cur.execute("""
+            SELECT COUNT(*) as total_beneficiarios
+            FROM app.beneficiarios 
+            WHERE expediente_id = %s
+        """, (expediente_id,))
+        
+        total_beneficiarios = cur.fetchone()['total_beneficiarios']
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'expediente_id': expediente_id,
+                'total_beneficiarios': total_beneficiarios,
+                'beneficiarios_firmados': len(firmas),
+                'beneficiarios_pendientes': total_beneficiarios - len(firmas),
+                'firmas': [dict(firma) for firma in firmas]
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error consultando firmas de beneficiarios: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/buscar-saldo-insoluto', methods=['POST'])
+def buscar_saldo_insoluto():
+    """Buscar saldos insolutos por RUT del causante"""
+    print("🔔 Petición de búsqueda de saldo insoluto")
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        data = request.get_json()
+        
+        # Validar datos requeridos
+        if not data.get('rut'):
+            return jsonify({'error': 'RUT es requerido'}), 400
+        
+        rut = data['rut'].strip()
+        
+        # Validar formato básico de RUT (sin validación matemática estricta)
+        rut_limpio = rut.replace('.', '').replace('-', '').upper()
+        if len(rut_limpio) < 8 or len(rut_limpio) > 9:
+            return jsonify({'error': 'Formato de RUT inválido'}), 400
+        
+        if not rut_limpio[:-1].isdigit() or rut_limpio[-1] not in '0123456789K':
+            return jsonify({'error': 'Formato de RUT inválido'}), 400
+        
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Buscar expedientes por RUT del causante
+        cur.execute("""
+            SELECT DISTINCT
+                e.id as expediente_id,
+                e.expediente_numero,
+                e.estado as estado_expediente,
+                e.observaciones,
+                c.fal_nombre,
+                c.fal_apellido_p,
+                c.fal_apellido_m,
+                c.fal_run,
+                c.fal_fecha_defuncion,
+                c.fal_comuna_defuncion,
+                s.folio,
+                s.estado as estado_solicitud,
+                s.sucursal,
+                e.fecha_creacion,
+                COUNT(b.id) as total_beneficiarios,
+                COUNT(fb.id) as beneficiarios_firmados
+            FROM app.expediente e
+            JOIN app.causante c ON e.id = c.expediente_id
+            JOIN app.solicitudes s ON e.id = s.expediente_id
+            LEFT JOIN app.beneficiarios b ON e.id = b.expediente_id
+            LEFT JOIN app.firmas_beneficiarios fb ON b.id = fb.beneficiario_id AND fb.estado = 'activa'
+            WHERE c.fal_run = %s
+            GROUP BY e.id, e.expediente_numero, e.estado, e.observaciones, e.fecha_creacion,
+                     c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run,
+                     c.fal_fecha_defuncion, c.fal_comuna_defuncion,
+                     s.folio, s.estado, s.sucursal
+            ORDER BY e.fecha_creacion DESC
+        """, (rut,))
+        
+        expedientes = cur.fetchall()
+        
+        if not expedientes:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'success': True,
+                'message': 'No se encontraron saldos insolutos para el RUT proporcionado',
+                'data': {
+                    'rut': rut,
+                    'expedientes': [],
+                    'total': 0
+                }
+            }), 200
+        
+        # Procesar resultados
+        resultados = []
+        for exp in expedientes:
+            # Calcular estado de firmas
+            pendientes_firmas = exp['total_beneficiarios'] - exp['beneficiarios_firmados']
+            
+            # Determinar estado general
+            if exp['estado_solicitud'] == 'completado':
+                estado_general = 'Completado'
+                color_estado = '#28a745'
+            elif pendientes_firmas == 0 and exp['total_beneficiarios'] > 0:
+                estado_general = 'Firmas Completas'
+                color_estado = '#17a2b8'
+            elif pendientes_firmas > 0:
+                estado_general = f'Pendiente ({pendientes_firmas} firmas)'
+                color_estado = '#ffc107'
+            else:
+                estado_general = 'En Proceso'
+                color_estado = '#6c757d'
+            
+            resultado = {
+                'expediente_id': exp['expediente_id'],
+                'expediente_numero': exp['expediente_numero'],
+                'folio': exp['folio'],
+                'causante': {
+                    'nombre_completo': f"{exp['fal_nombre']} {exp['fal_apellido_p']} {exp['fal_apellido_m'] or ''}".strip(),
+                    'rut': exp['fal_run'],
+                    'fecha_defuncion': exp['fal_fecha_defuncion'].strftime('%d/%m/%Y') if exp['fal_fecha_defuncion'] else 'No especificada',
+                    'sucursal': exp['sucursal'] or 'No especificada'
+                },
+                'solicitud': {
+                    'fecha_creacion': exp['fecha_creacion'].strftime('%d/%m/%Y %H:%M') if exp['fecha_creacion'] else 'No especificada',
+                    'estado': exp['estado_solicitud']
+                },
+                'firmas': {
+                    'total_beneficiarios': exp['total_beneficiarios'],
+                    'beneficiarios_firmados': exp['beneficiarios_firmados'],
+                    'pendientes': pendientes_firmas
+                },
+                'estado_general': estado_general,
+                'color_estado': color_estado
+            }
+            resultados.append(resultado)
+        
+        cur.close()
+        conn.close()
+        
+        print(f'✅ Búsqueda exitosa para RUT {rut}: {len(resultados)} expedientes encontrados')
+        
+        return jsonify({
+            'success': True,
+            'message': f'Se encontraron {len(resultados)} saldo(s) insoluto(s)',
+            'data': {
+                'rut': rut,
+                'expedientes': resultados,
+                'total': len(resultados)
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error en búsqueda de saldo insoluto: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/revision-expediente', methods=['POST'])
+def revision_expediente():
+    """Obtener expediente completo por RUT del causante para revisión"""
+    print("🔔 Petición de revisión de expediente")
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        data = request.get_json()
+        
+        # Validar datos requeridos
+        if not data.get('rut'):
+            return jsonify({'error': 'RUT es requerido'}), 400
+        
+        rut = data['rut'].strip()
+        
+        # Validar formato básico de RUT
+        rut_limpio = rut.replace('.', '').replace('-', '').upper()
+        if len(rut_limpio) < 8 or len(rut_limpio) > 9:
+            return jsonify({'error': 'Formato de RUT inválido'}), 400
+        
+        if not rut_limpio[:-1].isdigit() or rut_limpio[-1] not in '0123456789K':
+            return jsonify({'error': 'Formato de RUT inválido'}), 400
+        
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Obtener expediente completo por RUT del causante
+        cur.execute("""
+            SELECT DISTINCT
+                e.id as expediente_id,
+                e.expediente_numero,
+                e.estado as estado_expediente,
+                e.observaciones,
+                e.fecha_creacion,
+                c.fal_nombre,
+                c.fal_apellido_p,
+                c.fal_apellido_m,
+                c.fal_run,
+                c.fal_fecha_defuncion,
+                c.fal_comuna_defuncion,
+                c.fal_nacionalidad,
+                s.folio,
+                s.estado as estado_solicitud,
+                s.sucursal,
+                s.observacion as motivo_solicitud,
+                r.rep_nombre,
+                r.rep_apellido_p,
+                r.rep_apellido_m,
+                r.rep_rut,
+                r.rep_calidad,
+                r.rep_telefono,
+                r.rep_email,
+                COUNT(DISTINCT b.id) as total_beneficiarios,
+                COUNT(DISTINCT fb.id) as beneficiarios_firmados,
+                COUNT(DISTINCT d.id) as total_documentos
+            FROM app.expediente e
+            JOIN app.causante c ON e.id = c.expediente_id
+            JOIN app.solicitudes s ON e.id = s.expediente_id
+            LEFT JOIN app.representante r ON e.id = r.expediente_id
+            LEFT JOIN app.beneficiarios b ON e.id = b.expediente_id
+            LEFT JOIN app.firmas_beneficiarios fb ON b.id = fb.beneficiario_id AND fb.estado = 'activa'
+            LEFT JOIN app.documentos_saldo_insoluto d ON e.id = d.expediente_id
+            WHERE c.fal_run = %s
+            GROUP BY e.id, e.expediente_numero, e.estado, e.observaciones, e.fecha_creacion,
+                     c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run,
+                     c.fal_fecha_defuncion, c.fal_comuna_defuncion, c.fal_nacionalidad,
+                     s.folio, s.estado, s.sucursal, s.observacion,
+                     r.rep_nombre, r.rep_apellido_p, r.rep_apellido_m, r.rep_rut,
+                     r.rep_calidad, r.rep_telefono, r.rep_email
+            ORDER BY e.fecha_creacion DESC
+        """, (rut,))
+        
+        expediente = cur.fetchone()
+        
+        if not expediente:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'success': True,
+                'message': 'No se encontró expediente para el RUT proporcionado',
+                'data': {
+                    'rut': rut,
+                    'expediente': None,
+                    'documentos': [],
+                    'beneficiarios': []
+                }
+            }), 200
+        
+        # Obtener beneficiarios del expediente
+        cur.execute("""
+            SELECT 
+                b.id,
+                b.expediente_id,
+                b.ben_nombre,
+                b.ben_run,
+                b.ben_parentesco,
+                fb.id as firma_id,
+                fb.fecha_firma,
+                fb.estado as estado_firma
+            FROM app.beneficiarios b
+            LEFT JOIN app.firmas_beneficiarios fb ON b.id = fb.beneficiario_id AND fb.estado = 'activa'
+            WHERE b.expediente_id = %s
+            ORDER BY b.id
+        """, (expediente['expediente_id'],))
+        
+        beneficiarios = cur.fetchall()
+        
+        # Obtener documentos del expediente
+        cur.execute("""
+            SELECT 
+                d.id,
+                d.doc_nombre_archivo,
+                d.doc_tipo_id,
+                d.doc_tamano_bytes,
+                d.doc_mime_type,
+                d.doc_fecha_subida,
+                d.doc_estado,
+                d.doc_ruta_storage
+            FROM app.documentos_saldo_insoluto d
+            WHERE d.expediente_id = %s
+            ORDER BY d.doc_fecha_subida DESC
+        """, (expediente['expediente_id'],))
+        
+        documentos = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        # Procesar datos del expediente
+        pendientes_firmas = expediente['total_beneficiarios'] - expediente['beneficiarios_firmados']
+        
+        # Determinar estado de firmas
+        if expediente['total_beneficiarios'] == 0:
+            estado_firmas = 'Sin beneficiarios'
+            color_firmas = '#6c757d'
+            icono_firmas = '❌'
+        elif pendientes_firmas == 0:
+            estado_firmas = 'Firmas completas'
+            color_firmas = '#28a745'
+            icono_firmas = '✅'
+        else:
+            estado_firmas = f'Pendientes: {pendientes_firmas}'
+            color_firmas = '#ffc107'
+            icono_firmas = '⚠️'
+        
+        # Procesar beneficiarios
+        beneficiarios_procesados = []
+        for ben in beneficiarios:
+            beneficiario = {
+                'id': ben['id'],
+                'expediente_id': ben['expediente_id'],
+                'nombre_completo': ben['ben_nombre'] or 'Sin nombre',
+                'rut': ben['ben_run'],
+                'parentesco': ben['ben_parentesco'],
+                'firma': {
+                    'firmado': ben['firma_id'] is not None,
+                    'fecha_firma': ben['fecha_firma'].strftime('%d/%m/%Y %H:%M') if ben['fecha_firma'] else None,
+                    'estado': ben['estado_firma']
+                }
+            }
+            beneficiarios_procesados.append(beneficiario)
+        
+        # Procesar documentos
+        documentos_procesados = []
+        for doc in documentos:
+            tamano_mb = (doc['doc_tamano_bytes'] / (1024 * 1024)) if doc['doc_tamano_bytes'] else 0
+            
+            documento = {
+                'id': doc['id'],
+                'nombre': doc['doc_nombre_archivo'],
+                'tipo_id': doc['doc_tipo_id'],
+                'tamano_mb': round(tamano_mb, 2),
+                'mime_type': doc['doc_mime_type'],
+                'fecha_subida': doc['doc_fecha_subida'].strftime('%d/%m/%Y %H:%M') if doc['doc_fecha_subida'] else 'No especificada',
+                'estado': doc['doc_estado'],
+                'ruta_descarga': doc['doc_ruta_storage']
+            }
+            documentos_procesados.append(documento)
+        
+        resultado = {
+            'expediente_id': expediente['expediente_id'],
+            'expediente_numero': expediente['expediente_numero'],
+            'folio': expediente['folio'],
+            'estado_expediente': expediente['estado_expediente'],
+            'fecha_creacion': expediente['fecha_creacion'].strftime('%d/%m/%Y %H:%M') if expediente['fecha_creacion'] else 'No especificada',
+            'causante': {
+                'nombre_completo': f"{expediente['fal_nombre']} {expediente['fal_apellido_p']} {expediente['fal_apellido_m'] or ''}".strip(),
+                'rut': expediente['fal_run'],
+                'fecha_defuncion': expediente['fal_fecha_defuncion'].strftime('%d/%m/%Y') if expediente['fal_fecha_defuncion'] else 'No especificada',
+                'comuna_defuncion': expediente['fal_comuna_defuncion'] or 'No especificada',
+                'nacionalidad': expediente['fal_nacionalidad'] or 'No especificada'
+            },
+            'representante': {
+                'nombre_completo': f"{expediente['rep_nombre'] or ''} {expediente['rep_apellido_p'] or ''} {expediente['rep_apellido_m'] or ''}".strip() if expediente['rep_nombre'] else 'No especificado',
+                'rut': expediente['rep_rut'] or 'No especificado',
+                'calidad': expediente['rep_calidad'] or 'No especificada',
+                'telefono': expediente['rep_telefono'] or 'No especificado',
+                'email': expediente['rep_email'] or 'No especificado'
+            },
+            'solicitud': {
+                'sucursal': expediente['sucursal'] or 'No especificada',
+                'motivo': expediente['motivo_solicitud'] or 'No especificado',
+                'estado': expediente['estado_solicitud']
+            },
+            'firmas': {
+                'total_beneficiarios': expediente['total_beneficiarios'],
+                'beneficiarios_firmados': expediente['beneficiarios_firmados'],
+                'pendientes': pendientes_firmas,
+                'estado': estado_firmas,
+                'color': color_firmas,
+                'icono': icono_firmas
+            },
+            'documentos': {
+                'total': expediente['total_documentos'],
+                'lista': documentos_procesados
+            },
+            'beneficiarios': beneficiarios_procesados
+        }
+        
+        print(f'✅ Revisión exitosa para RUT {rut}: Expediente {expediente["expediente_numero"]}')
+        
+        return jsonify({
+            'success': True,
+            'message': f'Expediente encontrado: {expediente["expediente_numero"]}',
+            'data': resultado
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error en revisión de expediente: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
 if __name__ == '__main__':
     if test_connection():
+        # Crear tabla de firmas de beneficiarios si no existe
+        create_firmas_beneficiarios_table()
+        
         config = Config()
         print(f'✅ Servidor Flask ejecutándose en puerto {config.PORT}')
         print(f'🔗 URL: http://localhost:{config.PORT}')

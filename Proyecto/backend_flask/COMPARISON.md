@@ -76,3 +76,8 @@ expediente_id = cur.fetchone()[0]
 
 **Usa Flask** para este proyecto. Es más simple, limpio y adecuado para una API REST como esta.
 
+
+
+
+
+

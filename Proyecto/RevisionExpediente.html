@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Revisión de Expediente</title>
+  <style>
+    :root { --c1:#0d6efd; --cBg:#f6f7fb; --text:#333; --border:#e5e7eb; --success:#28a745; --warning:#ffc107; --danger:#dc3545; }
+    * { box-sizing: border-box; }
+    body {
+      margin:0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(120deg, #e3f0ff 0%, #f7e3e3 100%, #f5f7fb 100%);
+      color:var(--text);
+      min-height: 100vh;
+    }
+    .header { background:#fff; border-bottom:1px solid var(--border); padding:20px; text-align:center; }
+    h1 { margin:0; color:var(--c1); font-size:28px; }
+    .container { max-width:1200px; margin:0 auto; padding:20px; }
+    .search-box { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px; }
+    .form-group { margin-bottom:16px; }
+    label { display:block; margin-bottom:6px; font-weight:500; }
+    input { width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; font-size:16px; }
+    .btn { background:var(--c1); color:#fff; border:none; padding:12px 24px; border-radius:8px; cursor:pointer; font-size:16px; }
+    .btn:hover { background:#084298; }
+    .btn-success { background:var(--success); }
+    .btn-success:hover { background:#1e7e34; }
+    .btn-warning { background:var(--warning); color:#000; }
+    .btn-warning:hover { background:#e0a800; }
+    .btn-danger { background:var(--danger); }
+    .btn-danger:hover { background:#c82333; }
+    
+    .expediente-info { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px; }
+    .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
+    .info-section { background:#f8f9fa; padding:16px; border-radius:8px; }
+    .info-section h3 { margin:0 0 12px; color:var(--c1); font-size:18px; }
+    .info-item { margin-bottom:8px; }
+    .info-label { font-weight:600; color:#666; }
+    .info-value { color:#333; }
+    
+    .status-card { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px; }
+    .status-header { display:flex; align-items:center; margin-bottom:16px; }
+    .status-icon { font-size:24px; margin-right:12px; }
+    .status-title { font-size:20px; font-weight:600; margin:0; }
+    .status-details { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; }
+    .status-item { text-align:center; padding:12px; background:#f8f9fa; border-radius:8px; }
+    .status-number { font-size:24px; font-weight:bold; color:var(--c1); }
+    .status-label { font-size:14px; color:#666; }
+    
+    .documentos-section { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px; }
+    .documentos-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+    .documentos-count { background:var(--c1); color:#fff; padding:8px 16px; border-radius:20px; font-size:14px; font-weight:600; }
+    .documentos-list { display:grid; gap:12px; }
+    .documento-item { display:flex; justify-content:space-between; align-items:center; padding:16px; background:#f8f9fa; border-radius:8px; border-left:4px solid var(--c1); }
+    .documento-info { flex:1; }
+    .documento-nombre { font-weight:600; margin-bottom:4px; }
+    .documento-detalles { font-size:14px; color:#666; }
+    .documento-acciones { display:flex; gap:8px; }
+    
+    .beneficiarios-section { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-bottom:20px; }
+    .beneficiarios-list { display:grid; gap:12px; }
+    .beneficiario-item { display:flex; justify-content:space-between; align-items:center; padding:16px; background:#f8f9fa; border-radius:8px; }
+    .beneficiario-info { flex:1; }
+    .beneficiario-nombre { font-weight:600; margin-bottom:4px; }
+    .beneficiario-detalles { font-size:14px; color:#666; }
+    .firma-status { display:flex; align-items:center; gap:8px; }
+    .firma-check { font-size:20px; }
+    
+    .download-section { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1); text-align:center; }
+    .download-title { font-size:20px; font-weight:600; margin-bottom:12px; color:var(--c1); }
+    .download-description { color:#666; margin-bottom:20px; }
+    
+    .no-results { text-align:center; color:#6b7280; padding:40px; background:#fff; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+    
+    @media (max-width: 768px) {
+      .info-grid { grid-template-columns:1fr; }
+      .status-details { grid-template-columns:1fr; }
+      .documento-item { flex-direction:column; align-items:flex-start; gap:12px; }
+      .beneficiario-item { flex-direction:column; align-items:flex-start; gap:12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>Revisión de Expediente</h1>
+  </header>
+  
+  <div class="container">
+    <div class="search-box">
+      <h2>Buscar Expediente</h2>
+      <form id="searchForm">
+        <div class="form-group">
+          <label for="rut">RUT del Causante</label>
+          <input type="text" id="rut" placeholder="12.345.678-9" required>
+        </div>
+        <button type="submit" class="btn">Buscar Expediente</button>
+      </form>
+    </div>
+    
+    <div id="expedienteContent" style="display:none;">
+      <!-- Contenido del expediente se mostrará aquí -->
+    </div>
+    
+    <div class="no-results" id="noResults" style="display:none;">
+      <div style="font-size:48px; margin-bottom:16px;">🔍</div>
+      <h3>No se encontró expediente</h3>
+      <p>No se encontró ningún expediente para el RUT proporcionado.</p>
+    </div>
+  </div>
+
+  <script>
+    // Función para calcular dígito verificador
+    function calcularDV(rut) {
+      let suma = 0;
+      let multiplicador = 2;
+      
+      for (let i = rut.length - 1; i >= 0; i--) {
+        suma += parseInt(rut[i]) * multiplicador;
+        multiplicador = multiplicador < 7 ? multiplicador + 1 : 2;
+      }
+      
+      let resto = suma % 11;
+      let dv = 11 - resto;
+      
+      if (dv === 11) return '0';
+      if (dv === 10) return 'K';
+      return dv.toString();
+    }
+
+    // Función para formatear RUT automáticamente
+    function formatRUT(e) {
+      let value = e.target.value.replace(/[^0-9kK]/g, '');
+      
+      if (value.length >= 2) {
+        let body = value.slice(0, -1);
+        let dv = value.slice(-1);
+        
+        // Si el DV no es válido (no es número ni K), calcularlo automáticamente
+        if (!/[0-9kK]/.test(dv) && body.length >= 7) {
+          dv = calcularDV(body);
+          value = body + dv;
+        }
+        
+        if (body.length > 0) {
+          if (body.length > 6) {
+            body = body.slice(0, -6) + '.' + body.slice(-6, -3) + '.' + body.slice(-3);
+          } else if (body.length > 3) {
+            body = body.slice(0, -3) + '.' + body.slice(-3);
+          }
+          value = body + '-' + dv;
+        }
+      }
+      
+      e.target.value = value;
+    }
+
+    // Configurar formateo automático de RUT
+    document.addEventListener('DOMContentLoaded', function() {
+      const rutField = document.getElementById('rut');
+      if (rutField) {
+        rutField.addEventListener('input', formatRUT);
+      }
+    });
+
+    document.getElementById('searchForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      let rut = document.getElementById('rut').value.trim();
+      
+      if (!rut) {
+        alert('Ingresa el RUT del causante');
+        return;
+      }
+      
+      // Si el RUT no tiene formato completo, intentar completarlo
+      let rutNumeros = rut.replace(/[^0-9]/g, '');
+      if (rutNumeros.length >= 7 && rutNumeros.length <= 8 && !rut.includes('-')) {
+        // Calcular DV automáticamente si falta
+        let dv = calcularDV(rutNumeros);
+        rut = rutNumeros + '-' + dv;
+        console.log('🔧 RUT completado automáticamente:', rut);
+      }
+      
+      // Mostrar loading
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      const originalText = submitBtn.textContent;
+      submitBtn.textContent = 'Buscando...';
+      submitBtn.disabled = true;
+      
+      try {
+        console.log('🔍 Buscando expediente por RUT:', rut);
+        
+        const response = await fetch('http://localhost:3001/api/revision-expediente', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ rut: rut })
+        });
+        
+        console.log('📡 Respuesta recibida:', response.status);
+        
+        if (!response.ok) {
+          // Intentar obtener el mensaje de error del servidor
+          let errorMessage = `Error del servidor: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (e) {
+            console.log('No se pudo obtener mensaje de error detallado');
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const resultado = await response.json();
+        console.log('📋 Resultado completo:', resultado);
+        
+        if (resultado.success) {
+          if (resultado.data.expediente_id) {
+            showExpediente(resultado.data);
+          } else {
+            showNoResults(rut);
+          }
+        } else {
+          throw new Error(resultado.error || 'Error desconocido');
+        }
+        
+      } catch (error) {
+        console.error('❌ Error en búsqueda:', error);
+        alert(`❌ Error al buscar expediente:\n\n${error.message}\n\nPor favor, verifica que el servidor esté corriendo y vuelve a intentar.`);
+      } finally {
+        // Restaurar botón
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+      }
+    });
+    
+    function showExpediente(data) {
+      document.getElementById('expedienteContent').style.display = 'block';
+      document.getElementById('noResults').style.display = 'none';
+      
+      let html = `
+        <!-- Información del Expediente -->
+        <div class="expediente-info">
+          <h2>📋 Expediente: ${data.expediente_numero}</h2>
+          <div class="info-grid">
+            <div class="info-section">
+              <h3>👤 Datos del Causante</h3>
+              <div class="info-item">
+                <span class="info-label">Nombre:</span>
+                <span class="info-value">${data.causante.nombre_completo}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">RUT:</span>
+                <span class="info-value">${data.causante.rut}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Fecha Defunción:</span>
+                <span class="info-value">${data.causante.fecha_defuncion}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Comuna:</span>
+                <span class="info-value">${data.causante.comuna_defuncion}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Nacionalidad:</span>
+                <span class="info-value">${data.causante.nacionalidad}</span>
+              </div>
+            </div>
+            
+            <div class="info-section">
+              <h3>👨‍💼 Datos del Representante</h3>
+              <div class="info-item">
+                <span class="info-label">Nombre:</span>
+                <span class="info-value">${data.representante.nombre_completo}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">RUT:</span>
+                <span class="info-value">${data.representante.rut}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Calidad:</span>
+                <span class="info-value">${data.representante.calidad}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Teléfono:</span>
+                <span class="info-value">${data.representante.telefono}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Email:</span>
+                <span class="info-value">${data.representante.email}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="info-grid">
+            <div class="info-section">
+              <h3>📄 Datos del Expediente</h3>
+              <div class="info-item">
+                <span class="info-label">ID Expediente:</span>
+                <span class="info-value">${data.expediente_id}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Folio:</span>
+                <span class="info-value">${data.folio}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Estado:</span>
+                <span class="info-value">${data.estado_expediente}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Fecha Creación:</span>
+                <span class="info-value">${data.fecha_creacion}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Sucursal:</span>
+                <span class="info-value">${data.solicitud.sucursal}</span>
+              </div>
+            </div>
+            
+            <div class="info-section">
+              <h3>📝 Datos de la Solicitud</h3>
+              <div class="info-item">
+                <span class="info-label">Motivo:</span>
+                <span class="info-value">${data.solicitud.motivo}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Estado:</span>
+                <span class="info-value">${data.solicitud.estado}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Estado de Firmas -->
+        <div class="status-card">
+          <div class="status-header">
+            <span class="status-icon">${data.firmas.icono}</span>
+            <h3 class="status-title">Estado de Firmas Digitales</h3>
+          </div>
+          <div class="status-details">
+            <div class="status-item">
+              <div class="status-number">${data.firmas.total_beneficiarios}</div>
+              <div class="status-label">Total Beneficiarios</div>
+            </div>
+            <div class="status-item">
+              <div class="status-number">${data.firmas.beneficiarios_firmados}</div>
+              <div class="status-label">Firmados</div>
+            </div>
+            <div class="status-item">
+              <div class="status-number">${data.firmas.pendientes}</div>
+              <div class="status-label">Pendientes</div>
+            </div>
+            <div class="status-item">
+              <div class="status-number" style="color:${data.firmas.color}">${data.firmas.estado}</div>
+              <div class="status-label">Estado General</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Lista de Beneficiarios -->
+        <div class="beneficiarios-section">
+          <div class="documentos-header">
+            <h3>👥 Beneficiarios (${data.beneficiarios.length})</h3>
+          </div>
+          <div class="beneficiarios-list">
+      `;
+      
+      data.beneficiarios.forEach(beneficiario => {
+        const firmaIcon = beneficiario.firma.firmado ? '✅' : '❌';
+        const firmaText = beneficiario.firma.firmado ? 'Firmado' : 'Sin firmar';
+        const firmaColor = beneficiario.firma.firmado ? 'color:#28a745' : 'color:#dc3545';
+        
+        html += `
+          <div class="beneficiario-item">
+            <div class="beneficiario-info">
+              <div class="beneficiario-nombre">${beneficiario.nombre_completo}</div>
+              <div class="beneficiario-detalles">
+                RUT: ${beneficiario.rut} | Parentesco: ${beneficiario.parentesco} | Porcentaje: ${beneficiario.porcentaje}%
+              </div>
+            </div>
+            <div class="firma-status">
+              <span class="firma-check" style="${firmaColor}">${firmaIcon}</span>
+              <span style="${firmaColor}">${firmaText}</span>
+            </div>
+          </div>
+        `;
+      });
+      
+      html += `
+          </div>
+        </div>
+        
+        <!-- Lista de Documentos -->
+        <div class="documentos-section">
+          <div class="documentos-header">
+            <h3>📁 Documentos (${data.documentos.total})</h3>
+            <span class="documentos-count">${data.documentos.total} archivos</span>
+          </div>
+          <div class="documentos-list">
+      `;
+      
+      if (data.documentos.lista.length > 0) {
+        data.documentos.lista.forEach(documento => {
+          html += `
+            <div class="documento-item">
+              <div class="documento-info">
+                <div class="documento-nombre">${documento.nombre}</div>
+                <div class="documento-detalles">
+                  ${documento.mime_type} • ${documento.tamano_mb} MB • Subido: ${documento.fecha_subida}
+                </div>
+              </div>
+              <div class="documento-acciones">
+                <button class="btn btn-success" onclick="descargarDocumento(${documento.id})">
+                  📥 Descargar
+                </button>
+              </div>
+            </div>
+          `;
+        });
+      } else {
+        html += `
+          <div style="text-align:center; padding:20px; color:#666;">
+            No hay documentos cargados en este expediente.
+          </div>
+        `;
+      }
+      
+      html += `
+          </div>
+        </div>
+        
+        <!-- Descarga Completa -->
+        <div class="download-section">
+          <h3 class="download-title">📦 Descargar Expediente Completo</h3>
+          <p class="download-description">
+            Descarga todos los documentos del expediente en un archivo ZIP comprimido.
+          </p>
+          <button class="btn btn-success" onclick="descargarExpedienteCompleto(${data.expediente_id})">
+            📦 Descargar Expediente Completo
+          </button>
+        </div>
+      `;
+      
+      document.getElementById('expedienteContent').innerHTML = html;
+    }
+    
+    function showNoResults(rut) {
+      document.getElementById('expedienteContent').style.display = 'none';
+      document.getElementById('noResults').style.display = 'block';
+      
+      document.getElementById('noResults').innerHTML = `
+        <div style="text-align:center; padding:40px;">
+          <div style="font-size:48px; margin-bottom:16px;">🔍</div>
+          <h3>No se encontró expediente</h3>
+          <p>No se encontró ningún expediente para el RUT: <strong>${rut}</strong></p>
+          <p style="color:#6c757d; font-size:14px;">
+            Verifica que el RUT esté correcto o que exista un expediente para esta persona.
+          </p>
+        </div>
+      `;
+    }
+    
+    function descargarDocumento(documentoId) {
+      window.open(`http://localhost:3001/api/download-documento/${documentoId}`, '_blank');
+    }
+    
+    function descargarExpedienteCompleto(expedienteId) {
+      // TODO: Implementar descarga completa del expediente
+      alert('Funcionalidad de descarga completa en desarrollo');
+    }
+  </script>
+</body>
+</html>

@@ -38,7 +38,7 @@
       <form id="searchForm">
         <div class="form-group">
           <label for="rut">RUT del Fallecido</label>
-          <input type="text" id="rut" placeholder="12.345.678-9" pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]" required>
+          <input type="text" id="rut" placeholder="12.345.678-9" required>
         </div>
         <button type="submit" class="btn">Buscar</button>
       </form>
@@ -55,35 +55,199 @@
   </div>
 
   <script>
-    document.getElementById('searchForm').addEventListener('submit', function(e) {
+    // Función para calcular dígito verificador
+    function calcularDV(rut) {
+      let suma = 0;
+      let multiplicador = 2;
+      
+      for (let i = rut.length - 1; i >= 0; i--) {
+        suma += parseInt(rut[i]) * multiplicador;
+        multiplicador = multiplicador < 7 ? multiplicador + 1 : 2;
+      }
+      
+      let resto = suma % 11;
+      let dv = 11 - resto;
+      
+      if (dv === 11) return '0';
+      if (dv === 10) return 'K';
+      return dv.toString();
+    }
+
+    // Función para formatear RUT automáticamente
+    function formatRUT(e) {
+      let value = e.target.value.replace(/[^0-9kK]/g, '');
+      
+      if (value.length >= 2) {
+        let body = value.slice(0, -1);
+        let dv = value.slice(-1);
+        
+        // Si el DV no es válido (no es número ni K), calcularlo automáticamente
+        if (!/[0-9kK]/.test(dv) && body.length >= 7) {
+          dv = calcularDV(body);
+          value = body + dv;
+        }
+        
+        if (body.length > 0) {
+          if (body.length > 6) {
+            body = body.slice(0, -6) + '.' + body.slice(-6, -3) + '.' + body.slice(-3);
+          } else if (body.length > 3) {
+            body = body.slice(0, -3) + '.' + body.slice(-3);
+          }
+          value = body + '-' + dv;
+        }
+      }
+      
+      e.target.value = value;
+    }
+
+    // Configurar formateo automático de RUT
+    document.addEventListener('DOMContentLoaded', function() {
+      const rutField = document.getElementById('rut');
+      if (rutField) {
+        rutField.addEventListener('input', formatRUT);
+      }
+    });
+
+    document.getElementById('searchForm').addEventListener('submit', async function(e) {
       e.preventDefault();
       
-      const rut = document.getElementById('rut').value.trim();
+      let rut = document.getElementById('rut').value.trim();
       
       if (!rut) {
         alert('Ingresa el RUT del fallecido');
         return;
       }
       
-      // Simular búsqueda por RUT (aquí conectarías con tu backend)
-      console.log('Buscando por RUT:', rut);
+      // Si el RUT no tiene formato completo, intentar completarlo
+      let rutNumeros = rut.replace(/[^0-9]/g, '');
+      if (rutNumeros.length >= 7 && rutNumeros.length <= 8 && !rut.includes('-')) {
+        // Calcular DV automáticamente si falta
+        let dv = calcularDV(rutNumeros);
+        rut = rutNumeros + '-' + dv;
+        console.log('🔧 RUT completado automáticamente:', rut);
+      }
       
-      // Mostrar resultados de ejemplo
-      showResults();
+      // Mostrar loading
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      const originalText = submitBtn.textContent;
+      submitBtn.textContent = 'Buscando...';
+      submitBtn.disabled = true;
+      
+      try {
+        console.log('🔍 Buscando por RUT:', rut);
+        console.log('🔍 RUT length:', rut.length);
+        console.log('🔍 RUT type:', typeof rut);
+        
+        const requestData = { rut: rut };
+        console.log('🔍 Datos a enviar:', requestData);
+        
+        const response = await fetch('http://localhost:3001/api/buscar-saldo-insoluto', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestData)
+        });
+        
+        console.log('📡 Respuesta recibida:', response.status);
+        
+        if (!response.ok) {
+          // Intentar obtener el mensaje de error del servidor
+          let errorMessage = `Error del servidor: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (e) {
+            console.log('No se pudo obtener mensaje de error detallado');
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const resultado = await response.json();
+        console.log('📋 Resultado completo:', resultado);
+        
+        if (resultado.success) {
+          if (resultado.data.total > 0) {
+            showResults(resultado.data);
+          } else {
+            showNoResults(rut);
+          }
+        } else {
+          throw new Error(resultado.error || 'Error desconocido');
+        }
+        
+      } catch (error) {
+        console.error('❌ Error en búsqueda:', error);
+        alert(`❌ Error al buscar saldo insoluto:\n\n${error.message}\n\nPor favor, verifica que el servidor esté corriendo y vuelve a intentar.`);
+      } finally {
+        // Restaurar botón
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+      }
     });
     
-    function showResults() {
+    function showResults(data) {
       document.getElementById('results').style.display = 'block';
       document.getElementById('noResults').style.display = 'none';
       
-      // Contenido de ejemplo - reemplazar con datos reales
-      document.getElementById('resultsContent').innerHTML = `
-        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-bottom:12px;">
-          <h4>Juan Pérez González</h4>
-          <p><strong>RUT:</strong> 12.345.678-9</p>
-          <p><strong>Fecha Defunción:</strong> 15/03/2024</p>
-          <p><strong>Saldo Insoluto:</strong> $1,250,000</p>
-          <p><strong>Estado:</strong> <span style="color:#28a745;">Pendiente</span></p>
+      let html = `<h3>Resultados para RUT: ${data.rut}</h3>`;
+      html += `<p class="muted">Se encontraron ${data.total} saldo(s) insoluto(s)</p>`;
+      
+      data.expedientes.forEach(expediente => {
+        html += `
+          <div style="border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-bottom:16px; background:#f8f9fa;">
+            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
+              <h4 style="margin:0; color:#0d6efd;">${expediente.causante.nombre_completo}</h4>
+              <span style="background:${expediente.color_estado}; color:white; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold;">
+                ${expediente.estado_general}
+              </span>
+            </div>
+            
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+              <div>
+                <p style="margin:4px 0;"><strong>RUT:</strong> ${expediente.causante.rut}</p>
+                <p style="margin:4px 0;"><strong>Fecha Defunción:</strong> ${expediente.causante.fecha_defuncion}</p>
+                <p style="margin:4px 0;"><strong>Sucursal:</strong> ${expediente.causante.sucursal}</p>
+              </div>
+              <div>
+                <p style="margin:4px 0;"><strong>Expediente:</strong> ${expediente.expediente_numero}</p>
+                <p style="margin:4px 0;"><strong>Folio:</strong> ${expediente.folio}</p>
+                <p style="margin:4px 0;"><strong>Estado:</strong> ${expediente.solicitud.estado}</p>
+              </div>
+            </div>
+            
+            <div style="background:white; padding:12px; border-radius:6px; border-left:4px solid ${expediente.color_estado};">
+              <p style="margin:4px 0;"><strong>Estado de Firmas:</strong></p>
+              <p style="margin:4px 0;">
+                Beneficiarios: ${expediente.firmas.total_beneficiarios} | 
+                Firmados: ${expediente.firmas.beneficiarios_firmados} | 
+                Pendientes: ${expediente.firmas.pendientes}
+              </p>
+              <p style="margin:4px 0; font-size:12px; color:#6c757d;">
+                Creado: ${expediente.solicitud.fecha_creacion}
+              </p>
+            </div>
+          </div>
+        `;
+      });
+      
+      document.getElementById('resultsContent').innerHTML = html;
+    }
+    
+    function showNoResults(rut) {
+      document.getElementById('results').style.display = 'none';
+      document.getElementById('noResults').style.display = 'block';
+      
+      document.getElementById('noResults').innerHTML = `
+        <div style="text-align:center; padding:40px;">
+          <div style="font-size:48px; margin-bottom:16px;">🔍</div>
+          <h3>No se encontraron resultados</h3>
+          <p>No se encontraron saldos insolutos para el RUT: <strong>${rut}</strong></p>
+          <p style="color:#6c757d; font-size:14px;">
+            Verifica que el RUT esté correcto o que existan expedientes para esta persona.
+          </p>
         </div>
       `;
     }
