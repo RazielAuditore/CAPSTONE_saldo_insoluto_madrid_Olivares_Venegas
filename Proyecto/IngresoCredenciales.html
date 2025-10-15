@@ -41,8 +41,8 @@
   <div class="login-box">
     <div class="titulo">Software de saldos insolutos</div>
     <h2>Ingresar</h2>
-    <input type="text" id="rut" placeholder="RUT (ej: 12.345.678-9)">
-    <input type="password" id="pass" placeholder="Contraseña">
+    <input type="text" id="rut" placeholder="RUT (ej: 12.345.678-9)" maxlength="12" oninput="formatearRUT(this)" onkeypress="if(event.key==='Enter') login()">
+    <input type="password" id="pass" placeholder="Contraseña" onkeypress="if(event.key==='Enter') login()">
     <button onclick="login()">Entrar</button>
     <div style="margin-top:10px;">
       <a href="#" style="font-size:14px; color:#007BFF; text-decoration:underline; cursor:pointer;">¿Se le olvidó la contraseña?</a>
@@ -51,6 +51,42 @@
   </div>
 
   <script>
+    function formatearRUT(input) {
+      // Obtener solo números y K
+      let valor = input.value.replace(/[^0-9Kk]/g, '');
+      
+      // Limitar a 9 caracteres máximo
+      if (valor.length > 9) {
+        valor = valor.substring(0, 9);
+      }
+      
+      // Formatear con puntos y guión
+      if (valor.length > 0) {
+        let rutFormateado = '';
+        
+        // Si tiene más de 1 dígito, separar el dígito verificador
+        if (valor.length > 1) {
+          const numero = valor.slice(0, -1); // Todo excepto el último dígito
+          const dv = valor.slice(-1); // Último dígito (verificador)
+          
+          // Formatear el número con puntos
+          let numeroFormateado = '';
+          for (let i = numero.length - 1, j = 0; i >= 0; i--, j++) {
+            if (j > 0 && j % 3 === 0) {
+              numeroFormateado = '.' + numeroFormateado;
+            }
+            numeroFormateado = numero[i] + numeroFormateado;
+          }
+          
+          rutFormateado = numeroFormateado + '-' + dv;
+        } else {
+          rutFormateado = valor;
+        }
+        
+        input.value = rutFormateado;
+      }
+    }
+
     async function login() {
       const rut = document.getElementById("rut").value.trim();
       const password = document.getElementById("pass").value.trim();
@@ -76,8 +112,9 @@
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({
-            rut: rut,
+            username: rut,
             password: password
           })
         });
@@ -87,14 +124,8 @@
         console.log('📥 Datos respuesta:', resultado);
 
         if (response.ok && resultado.success) {
-          // Login exitoso - redirigir según el rol
-          if (resultado.data.rol === 'ejecutivo_plataforma') {
-            window.location.href = "Inicio.html";
-          } else if (resultado.data.rol === 'jefatura') {
-            window.location.href = "revisionSaldos.html"; // Página para jefatura
-          } else {
-            window.location.href = "formularioSaldoInsoluto.html"; // Por defecto
-          }
+          // Login exitoso - redirigir al dashboard
+          window.location.href = "index.html";
         } else {
           msg.textContent = resultado.error || "RUT o contraseña incorrectos";
         }

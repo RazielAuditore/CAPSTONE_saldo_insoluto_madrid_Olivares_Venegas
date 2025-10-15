@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Saldos Insolutos - Inicio</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .logo {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .login-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 10px;
+        }
+        
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .features {
+            margin-top: 30px;
+            text-align: left;
+        }
+        
+        .feature {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            padding: 10px;
+            background: #f8f9ff;
+            border-radius: 8px;
+        }
+        
+        .feature-icon {
+            font-size: 1.5em;
+            margin-right: 15px;
+            color: #667eea;
+        }
+        
+        .feature-text {
+            color: #555;
+        }
+        
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🏦</div>
+        <h1>Sistema de Saldos Insolutos</h1>
+        <p class="subtitle">Gestión digital de expedientes y firmas</p>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Verificando sesión...</p>
+        </div>
+        
+        <div id="loginSection">
+            <a href="IngresoCredenciales.html" class="login-btn">
+                🔐 Iniciar Sesión
+            </a>
+            <br>
+            <a href="crearUsuario.html" class="login-btn" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+                👤 Crear Usuario
+            </a>
+        </div>
+        
+        <div id="dashboardSection" style="display: none;">
+            <h2>¡Bienvenido, <span id="username"></span>!</h2>
+            <a href="formularioSaldoInsoluto.html" class="login-btn">
+                📋 Crear Expediente
+            </a>
+            <br>
+            <a href="BusquedaSaldoInsoluto.html" class="login-btn">
+                🔍 Buscar Expedientes
+            </a>
+            <br>
+            <a href="RevisionExpediente.html" class="login-btn">
+                📄 Revisar Expediente
+            </a>
+            <br>
+            <button onclick="logout()" class="login-btn" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);">
+                🚪 Cerrar Sesión
+            </button>
+        </div>
+        
+        <div class="features">
+            <div class="feature">
+                <span class="feature-icon">📋</span>
+                <span class="feature-text">Creación de expedientes digitales</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">✍️</span>
+                <span class="feature-text">Firmas digitales de beneficiarios</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📁</span>
+                <span class="feature-text">Gestión de documentos</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🔍</span>
+                <span class="feature-text">Búsqueda y consulta de expedientes</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Verificar sesión al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSession();
+        });
+        
+        async function checkSession() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                
+                const response = await fetch('http://localhost:3001/api/check-session', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.authenticated) {
+                        // Usuario logueado - mostrar dashboard
+                        const nombreCompleto = `${data.user.nombres} ${data.user.apellido_p}`;
+                        document.getElementById('username').textContent = nombreCompleto;
+                        document.getElementById('loginSection').style.display = 'none';
+                        document.getElementById('dashboardSection').style.display = 'block';
+                    } else {
+                        // Usuario no logueado - mostrar login
+                        document.getElementById('loginSection').style.display = 'block';
+                        document.getElementById('dashboardSection').style.display = 'none';
+                    }
+                } else {
+                    // Error - mostrar login
+                    document.getElementById('loginSection').style.display = 'block';
+                    document.getElementById('dashboardSection').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error verificando sesión:', error);
+                // Error - mostrar login
+                document.getElementById('loginSection').style.display = 'block';
+                document.getElementById('dashboardSection').style.display = 'none';
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        async function logout() {
+            try {
+                const response = await fetch('http://localhost:3001/api/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    // Redirigir a login
+                    window.location.href = 'IngresoCredenciales.html';
+                } else {
+                    alert('Error al cerrar sesión');
+                }
+            } catch (error) {
+                console.error('Error cerrando sesión:', error);
+                alert('Error al cerrar sesión');
+            }
+        }
+    </script>
+</body>
+</html>

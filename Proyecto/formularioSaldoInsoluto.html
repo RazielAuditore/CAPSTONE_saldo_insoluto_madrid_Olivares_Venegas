@@ -239,9 +239,6 @@
               <input id="fal_comuna_defuncion" name="fal_comuna_defuncion" type="text" maxlength="50" placeholder="Ingrese comuna...">
             </label>
           </div>
-          <label>Motivo de la solicitud
-            <textarea id="motivo_solicitud" name="motivo_solicitud"></textarea>
-          </label>
         </fieldset>
         <div class="actions">
           <button type="button" class="btn btn-secondary" onclick="goTab('rep')">← Volver</button>
@@ -459,23 +456,16 @@
 
           <div class="row">
             <div>
-              <label>Clave del Representante (para firmar)
-                <input type="password" id="pass_rep" name="pass_rep" placeholder="•••••••">
-              </label>
-              <button type="button" class="btn btn-ok" onclick="firmarRepresentante()">Firmar Representante</button>
-              <span id="badge_rep" class="badge" style="display:none;">Sin firma</span>
-            </div>
-            <div>
-              <label>Clave del Funcionario (para firmar)
+              <label>Clave del Funcionario (para firmar y validar)
                 <input type="password" id="pass_func" name="pass_func" placeholder="•••••••">
               </label>
-              <button type="button" class="btn btn-ok" onclick="firmarFuncionario()">Firmar Funcionario</button>
+              <button type="button" class="btn btn-ok" onclick="firmarFuncionario()">Firmar y Validar</button>
               <span id="badge_func" class="badge" style="display:none;">Sin firma</span>
             </div>
           </div>
 
           <p class="muted" style="margin-top:8px;">
-            Cada firma se genera como <b>HMAC-SHA256</b> del mismo payload, con su propia clave y un salt independiente.
+            La firma se genera como <b>HMAC-SHA256</b> usando la clave del funcionario logueado. El representante firmará con la aplicación externa.
           </p>
         </fieldset>
         <div class="actions">
@@ -673,38 +663,65 @@
       ].join("|");
     }
 
-    // ----- Firmas (rep / func) -----
-    let firmaRep = null;  // { firma_hex, salt_hex, ts }
+    // ----- Firma del funcionario -----
     let firmaFunc = null; // { firma_hex, salt_hex, ts }
-
-    async function firmarRepresentante(){
-      const pass = document.getElementById("pass_rep").value.trim();
-      if(!pass){ alert("Ingresa la clave del representante"); return; }
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      const key = await deriveHmacKey(pass, salt);
-      const payload = buildPayload();
-      const firma_hex = await hmacSign(key, payload);
-      const ts = new Date().toISOString();
-      firmaRep = { payload, firma_hex, salt_hex: bufToHex(salt), algoritmo: "HMAC-SHA256", ts };
-      const badge = document.getElementById("badge_rep");
-      badge.textContent = "Representante: Firmado";
-      badge.classList.add("ok"); badge.style.display="inline-block";
-      alert("✅ Firma del Representante generada");
-    }
 
     async function firmarFuncionario(){
       const pass = document.getElementById("pass_func").value.trim();
       if(!pass){ alert("Ingresa la clave del funcionario"); return; }
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      const key = await deriveHmacKey(pass, salt);
-      const payload = buildPayload();
-      const firma_hex = await hmacSign(key, payload);
-      const ts = new Date().toISOString();
-      firmaFunc = { payload, firma_hex, salt_hex: bufToHex(salt), algoritmo: "HMAC-SHA256", ts };
-      const badge = document.getElementById("badge_func");
-      badge.textContent = "Funcionario: Firmado";
-      badge.classList.add("ok"); badge.style.display="inline-block";
-      alert("✅ Firma del Funcionario generada");
+      
+      try {
+        // Validar la clave del funcionario con el backend
+        const response = await fetch('http://localhost:3001/api/validar-clave-funcionario', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ password: pass })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Error validando clave');
+        }
+
+        const resultado = await response.json();
+        if (!resultado.valid) {
+          alert("❌ Clave incorrecta. Verifica tu contraseña.");
+          return;
+        }
+
+        // Generar firma HMAC-SHA256
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const key = await deriveHmacKey(pass, salt);
+        const payload = buildPayload();
+        const firma_hex = await hmacSign(key, payload);
+        const ts = new Date().toISOString();
+        
+        firmaFunc = { 
+          payload, 
+          firma_hex, 
+          salt_hex: bufToHex(salt), 
+          algoritmo: "HMAC-SHA256", 
+          ts,
+          funcionario_id: resultado.funcionario_id,
+          funcionario_nombre: resultado.funcionario_nombre
+        };
+        
+        // Guardar el ID de solicitud para enviar la firma después
+        window.solicitudIdParaFirma = null; // Se establecerá después de crear la solicitud
+        
+        const badge = document.getElementById("badge_func");
+        badge.textContent = "Funcionario: Firmado y Validado";
+        badge.classList.add("ok"); 
+        badge.style.display="inline-block";
+        alert("✅ Firma del Funcionario generada y validada correctamente");
+        
+      } catch (error) {
+        console.error('Error firmando funcionario:', error);
+        alert(`❌ Error: ${error.message}`);
+      }
     }
 
     // ----- Subir archivos individuales -----
@@ -723,6 +740,7 @@
       try {
         const response = await fetch('http://localhost:3001/api/upload-documento', {
           method: 'POST',
+          credentials: 'include',
           body: formData
         });
 
@@ -870,7 +888,7 @@
           
           // Datos de la solicitud
           monto_solicitado: 0, // Campo requerido por el servidor
-          motivo_solicitud: document.getElementById("motivo_solicitud")?.value || "",
+          motivo_solicitud: "", // Campo eliminado del frontend, se envía vacío
           sucursal: document.getElementById("sucursal")?.value || "",
           
           // Beneficiarios
@@ -890,6 +908,7 @@
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify(data)
         });
         
@@ -909,6 +928,30 @@
           console.error('❌ Estructura de respuesta incorrecta:', resultado);
           alert('Error: No se recibieron los datos correctos del servidor');
           return;
+        }
+
+        // Enviar firma del funcionario si existe
+        if (firmaFunc) {
+          try {
+            console.log('🔐 Enviando firma del funcionario...');
+            const firmaResponse = await fetch(`http://localhost:3001/api/solicitudes/${resultado.data.solicitud_id}/firmar-funcionario`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+              body: JSON.stringify({ firma_data: firmaFunc })
+            });
+
+            if (firmaResponse.ok) {
+              const firmaResult = await firmaResponse.json();
+              console.log('✅ Firma del funcionario enviada:', firmaResult);
+            } else {
+              console.warn('⚠️ Error enviando firma del funcionario:', firmaResponse.status);
+            }
+          } catch (error) {
+            console.warn('⚠️ Error enviando firma del funcionario:', error);
+          }
         }
 
         // Subir archivos si los hay
@@ -940,8 +983,8 @@
           solicitud_id: resultado.data.solicitud_id,
           validacion: {
             sucursal: document.getElementById("sucursal").value,
-            firma_representante: firmaRep,
-            firma_funcionario: firmaFunc
+            firma_funcionario: firmaFunc,
+            nota: "Representante firmará con aplicación externa"
           }
         };
 
@@ -956,11 +999,9 @@
         // Limpiar formulario
         document.getElementById("formSaldo").reset();
         tbody.innerHTML = '';
-        firmaRep = null;
         firmaFunc = null;
         
-        // Resetear badges
-        document.getElementById("badge_rep").style.display = "none";
+        // Resetear badge
         document.getElementById("badge_func").style.display = "none";
 
         goTab('rep'); // Volver al inicio

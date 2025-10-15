@@ -1,5 +1,6 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, session, redirect, url_for
 from flask_cors import CORS
+from flask_session import Session
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
@@ -12,9 +13,38 @@ import io
 import bcrypt
 from werkzeug.utils import secure_filename
 from config import Config
+from functools import wraps
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True, origins=['http://localhost:8000'])
+
+# Configuración de sesiones
+app.config['SECRET_KEY'] = 'tu_clave_secreta_muy_segura_aqui'
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_KEY_PREFIX'] = 'saldo_insoluto:'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False  # Para desarrollo local
+
+# Inicializar Flask-Session
+Session(app)
+
+# Decorador para requerir autenticación
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        print(f"🔍 Verificando sesión para {f.__name__}")
+        print(f"🔍 Session keys: {list(session.keys())}")
+        print(f"🔍 User ID en sesión: {session.get('user_id', 'NO HAY')}")
+        
+        if 'user_id' not in session:
+            print(f"❌ No autorizado - no hay user_id en sesión")
+            return jsonify({'error': 'No autorizado', 'redirect': '/IngresoCredenciales.html'}), 401
+        
+        print(f"✅ Autorizado - user_id: {session['user_id']}")
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Configuración de la aplicación
 app.config.from_object(Config)
@@ -60,6 +90,51 @@ def create_firmas_beneficiarios_table():
             )
         """)
         
+        # Agregar campo funcionario_id a tabla expediente si no existe
+        cur.execute("""
+            ALTER TABLE app.expediente 
+            ADD COLUMN IF NOT EXISTS funcionario_id INTEGER
+        """)
+        
+        # Verificar que existe la tabla funcionarios
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'app' 
+                AND table_name = 'funcionarios'
+            )
+        """)
+        
+        tabla_funcionarios_existe = cur.fetchone()[0]
+        
+        if tabla_funcionarios_existe:
+            print('✅ Tabla funcionarios encontrada')
+        else:
+            print('⚠️ Tabla funcionarios no encontrada - creando tabla básica')
+            # Crear tabla funcionarios básica si no existe
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS app.funcionarios (
+                    id SERIAL PRIMARY KEY,
+                    rut VARCHAR(20) UNIQUE NOT NULL,
+                    nombres VARCHAR(100) NOT NULL,
+                    apellido_p VARCHAR(100) NOT NULL,
+                    apellido_m VARCHAR(100),
+                    password_hash VARCHAR(255) NOT NULL,
+                    rol VARCHAR(50) DEFAULT 'funcionario',
+                    sucursal VARCHAR(100),
+                    iniciales VARCHAR(10),
+                    activo BOOLEAN DEFAULT true,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Crear funcionario de prueba si no existe
+            cur.execute("""
+                INSERT INTO app.funcionarios (rut, nombres, apellido_p, password_hash, rol, sucursal, iniciales) 
+                SELECT '12345678-9', 'Admin', 'Sistema', %s, 'administrador', 'Central', 'AS'
+                WHERE NOT EXISTS (SELECT 1 FROM app.funcionarios WHERE rut = '12345678-9')
+            """, (hash_password('admin123'),))
+        
         # Crear índices para optimizar consultas
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_firmas_beneficiarios_expediente 
@@ -88,6 +163,9 @@ def create_firmas_beneficiarios_table():
         conn.close()
         
         print('✅ Tabla firmas_beneficiarios creada exitosamente')
+        print('✅ Campo funcionario_id agregado a tabla expediente')
+        print('✅ Tabla funcionarios verificada/creada')
+        print('✅ Funcionario admin creado (RUT: 12345678-9, password: admin123)')
         print('✅ Índices optimizados creados')
         return True
         
@@ -196,6 +274,7 @@ def hash_password(password):
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
 @app.route('/api/solicitudes', methods=['POST'])
+@login_required
 def crear_solicitud():
     """Crear una nueva solicitud de saldo insoluto"""
     conn = get_db_connection()
@@ -210,11 +289,14 @@ def crear_solicitud():
         
         # 1. Crear expediente principal
         expediente_numero = f"EXP-{datetime.now().year}-{datetime.now().strftime('%H%M%S')}"
+        # Obtener funcionario_id de la sesión
+        funcionario_id = session.get('user_id', 1)  # Usar ID del usuario logueado
+        
         cur.execute("""
-            INSERT INTO app.expediente (expediente_numero, estado, observaciones)
-            VALUES (%s, 'en_proceso', 'Expediente de saldo insoluto creado automáticamente')
+            INSERT INTO app.expediente (expediente_numero, estado, observaciones, funcionario_id)
+            VALUES (%s, 'en_proceso', 'Expediente de saldo insoluto creado automáticamente', %s)
             RETURNING id
-        """, (expediente_numero,))
+        """, (expediente_numero, funcionario_id))
         expediente_id = cur.fetchone()[0]
         
         # Datos del formulario
@@ -344,7 +426,7 @@ def crear_solicitud():
                 RETURNING id
             """, (expediente_id, solicitud_id, 1, f"documento_{solicitud_id}"))
         
-        # 7. Crear validación
+        # 7. Crear validación (solo requiere firma del funcionario)
         cur.execute("""
             INSERT INTO app.validacion (expediente_id, solicitud_id, val_sucursal, val_estado)
             VALUES (%s, %s, %s, 'pendiente')
@@ -536,6 +618,7 @@ def obtener_expediente(expediente_id):
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
 @app.route('/api/upload-documento', methods=['POST'])
+@login_required
 def upload_documento():
     """Subir un documento como BLOB"""
     print('📁 Iniciando subida de archivo...')
@@ -894,73 +977,9 @@ def health_check():
         'timestamp': datetime.now().isoformat()
     }), 200
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    """Autenticar funcionario con RUT y contraseña"""
-    print("🔔 Petición de login recibida")
-    
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
-    
-    try:
-        data = request.get_json()
-        
-        # Validar datos requeridos
-        if not data.get('rut') or not data.get('password'):
-            return jsonify({'error': 'RUT y contraseña son requeridos'}), 400
-        
-        rut = data['rut'].strip()
-        password = data['password']
-        
-        print(f"🔍 Intentando login con RUT: {rut}")
-        
-        # Buscar funcionario por RUT
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id, rut, nombres, apellido_p, apellido_m, password_hash, rol, sucursal, iniciales, activo
-            FROM app.funcionarios 
-            WHERE rut = %s AND activo = true
-        """, (rut,))
-        
-        funcionario = cur.fetchone()
-        
-        if not funcionario:
-            print(f"❌ Funcionario no encontrado o inactivo: {rut}")
-            return jsonify({'error': 'RUT o contraseña incorrectos'}), 401
-        
-        # Verificar contraseña
-        stored_hash = funcionario[5]  # password_hash
-        if not bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
-            print(f"❌ Contraseña incorrecta para RUT: {rut}")
-            return jsonify({'error': 'RUT o contraseña incorrectos'}), 401
-        
-        # Login exitoso
-        print(f"✅ Login exitoso para: {funcionario[2]} {funcionario[3]} ({rut})")
-        
-        return jsonify({
-            'success': True,
-            'message': 'Login exitoso',
-            'data': {
-                'id': funcionario[0],
-                'rut': funcionario[1],
-                'nombres': funcionario[2],
-                'apellido_p': funcionario[3],
-                'apellido_m': funcionario[4],
-                'rol': funcionario[6],
-                'sucursal': funcionario[7],
-                'iniciales': funcionario[8]
-            }
-        }), 200
-        
-    except Exception as e:
-        print(f'❌ Error en login: {e}')
-        if 'conn' in locals():
-            conn.rollback()
-            conn.close()
-        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
 @app.route('/api/beneficiarios/<int:beneficiario_id>/firma', methods=['POST'])
+@login_required
 def firmar_beneficiario(beneficiario_id):
     """Firmar como beneficiario usando contraseña de app externa"""
     print(f"🔔 Petición de firma de beneficiario ID: {beneficiario_id}")
@@ -1045,6 +1064,7 @@ def firmar_beneficiario(beneficiario_id):
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
 @app.route('/api/expediente/<int:expediente_id>/firmas-beneficiarios', methods=['GET'])
+@login_required
 def obtener_firmas_beneficiarios(expediente_id):
     """Obtener todas las firmas de beneficiarios de un expediente"""
     print(f"🔔 Consultando firmas de beneficiarios para expediente: {expediente_id}")
@@ -1104,6 +1124,7 @@ def obtener_firmas_beneficiarios(expediente_id):
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
 @app.route('/api/buscar-saldo-insoluto', methods=['POST'])
+@login_required
 def buscar_saldo_insoluto():
     """Buscar saldos insolutos por RUT del causante"""
     print("🔔 Petición de búsqueda de saldo insoluto")
@@ -1279,6 +1300,11 @@ def revision_expediente():
                 e.estado as estado_expediente,
                 e.observaciones,
                 e.fecha_creacion,
+                e.funcionario_id,
+                f.iniciales as funcionario_iniciales,
+                f.nombres as funcionario_nombres,
+                f.apellido_p as funcionario_apellido_p,
+                f.apellido_m as funcionario_apellido_m,
                 c.fal_nombre,
                 c.fal_apellido_p,
                 c.fal_apellido_m,
@@ -1303,12 +1329,14 @@ def revision_expediente():
             FROM app.expediente e
             JOIN app.causante c ON e.id = c.expediente_id
             JOIN app.solicitudes s ON e.id = s.expediente_id
+            LEFT JOIN app.funcionarios f ON e.funcionario_id = f.id
             LEFT JOIN app.representante r ON e.id = r.expediente_id
             LEFT JOIN app.beneficiarios b ON e.id = b.expediente_id
             LEFT JOIN app.firmas_beneficiarios fb ON b.id = fb.beneficiario_id AND fb.estado = 'activa'
             LEFT JOIN app.documentos_saldo_insoluto d ON e.id = d.expediente_id
             WHERE c.fal_run = %s
-            GROUP BY e.id, e.expediente_numero, e.estado, e.observaciones, e.fecha_creacion,
+            GROUP BY e.id, e.expediente_numero, e.estado, e.observaciones, e.fecha_creacion, e.funcionario_id,
+                     f.iniciales, f.nombres, f.apellido_p, f.apellido_m,
                      c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run,
                      c.fal_fecha_defuncion, c.fal_comuna_defuncion, c.fal_nacionalidad,
                      s.folio, s.estado, s.sucursal, s.observacion,
@@ -1374,13 +1402,35 @@ def revision_expediente():
         conn.close()
         
         # Procesar datos del expediente
-        pendientes_firmas = expediente['total_beneficiarios'] - expediente['beneficiarios_firmados']
+        pendientes_firmas_beneficiarios = expediente['total_beneficiarios'] - expediente['beneficiarios_firmados']
+        
+        # Determinar estado de firma del representante (simulado por ahora)
+        # En un sistema real, esto vendría de la app externa o de una tabla de firmas
+        representante_firmado = False  # Por defecto, no firmado
+        fecha_firma_representante = None
+        
+        # Simular que el representante ha firmado si el expediente tiene más de 1 día
+        if expediente['fecha_creacion']:
+            from datetime import datetime, timedelta
+            fecha_creacion = expediente['fecha_creacion']
+            if isinstance(fecha_creacion, str):
+                fecha_creacion = datetime.fromisoformat(fecha_creacion.replace('Z', '+00:00'))
+            
+            # Si el expediente tiene más de 1 día, simular que el representante firmó
+            if datetime.now() - fecha_creacion.replace(tzinfo=None) > timedelta(days=1):
+                representante_firmado = True
+                fecha_firma_representante = (fecha_creacion + timedelta(hours=2)).strftime('%d/%m/%Y %H:%M')
+        
+        # Calcular total de firmas (beneficiarios + representante)
+        total_firmas = expediente['total_beneficiarios'] + 1  # +1 por el representante
+        firmas_completadas = expediente['beneficiarios_firmados'] + (1 if representante_firmado else 0)
+        pendientes_firmas = total_firmas - firmas_completadas
         
         # Determinar estado de firmas
-        if expediente['total_beneficiarios'] == 0:
-            estado_firmas = 'Sin beneficiarios'
+        if total_firmas == 1:  # Solo representante, sin beneficiarios
+            estado_firmas = 'Solo representante'
             color_firmas = '#6c757d'
-            icono_firmas = '❌'
+            icono_firmas = '👨‍💼'
         elif pendientes_firmas == 0:
             estado_firmas = 'Firmas completas'
             color_firmas = '#28a745'
@@ -1442,20 +1492,38 @@ def revision_expediente():
                 'rut': expediente['rep_rut'] or 'No especificado',
                 'calidad': expediente['rep_calidad'] or 'No especificada',
                 'telefono': expediente['rep_telefono'] or 'No especificado',
-                'email': expediente['rep_email'] or 'No especificado'
+                'email': expediente['rep_email'] or 'No especificado',
+                'firmado': representante_firmado,
+                'fecha_firma': fecha_firma_representante
             },
             'solicitud': {
                 'sucursal': expediente['sucursal'] or 'No especificada',
                 'motivo': expediente['motivo_solicitud'] or 'No especificado',
                 'estado': expediente['estado_solicitud']
             },
+            'funcionario': {
+                'id': expediente['funcionario_id'] or 'No especificado',
+                'iniciales': expediente['funcionario_iniciales'] or 'No especificado',
+                'nombre_completo': f"{expediente['funcionario_nombres'] or ''} {expediente['funcionario_apellido_p'] or ''} {expediente['funcionario_apellido_m'] or ''}".strip() if expediente['funcionario_nombres'] else 'No especificado'
+            },
             'firmas': {
-                'total_beneficiarios': expediente['total_beneficiarios'],
-                'beneficiarios_firmados': expediente['beneficiarios_firmados'],
+                'total_firmas': total_firmas,
+                'firmas_completadas': firmas_completadas,
                 'pendientes': pendientes_firmas,
                 'estado': estado_firmas,
                 'color': color_firmas,
-                'icono': icono_firmas
+                'icono': icono_firmas,
+                'detalle': {
+                    'beneficiarios': {
+                        'total': expediente['total_beneficiarios'],
+                        'firmados': expediente['beneficiarios_firmados'],
+                        'pendientes': pendientes_firmas_beneficiarios
+                    },
+                    'representante': {
+                        'firmado': representante_firmado,
+                        'fecha_firma': fecha_firma_representante
+                    }
+                }
             },
             'documentos': {
                 'total': expediente['total_documentos'],
@@ -1475,6 +1543,211 @@ def revision_expediente():
     except Exception as e:
         print(f'❌ Error en revisión de expediente: {e}')
         if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    """Autenticar funcionario y crear sesión"""
+    data = request.get_json()
+    username = data.get('username')  # En este caso será el RUT
+    password = data.get('password')
+    
+    if not username or not password:
+        return jsonify({'error': 'RUT y contraseña requeridos'}), 400
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT id, rut, nombres, apellido_p, apellido_m, password_hash, rol, sucursal, iniciales
+            FROM app.funcionarios 
+            WHERE rut = %s AND activo = true
+        """, (username,))
+        
+        funcionario = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if funcionario and bcrypt.checkpw(password.encode('utf-8'), funcionario['password_hash'].encode('utf-8')):
+            # Crear sesión
+            session['user_id'] = funcionario['id']
+            session['username'] = funcionario['rut']
+            session['nombres'] = funcionario['nombres']
+            session['apellido_p'] = funcionario['apellido_p']
+            session['rol'] = funcionario['rol']
+            session.permanent = True
+            
+            return jsonify({
+                'success': True,
+                'message': 'Login exitoso',
+                'user': {
+                    'id': funcionario['id'],
+                    'rut': funcionario['rut'],
+                    'nombres': funcionario['nombres'],
+                    'apellido_p': funcionario['apellido_p'],
+                    'rol': funcionario['rol']
+                }
+            }), 200
+        else:
+            return jsonify({'error': 'RUT o contraseña incorrectos'}), 401
+            
+    except Exception as e:
+        print(f'❌ Error en login: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Cerrar sesión"""
+    session.clear()
+    return jsonify({'success': True, 'message': 'Sesión cerrada exitosamente'}), 200
+
+@app.route('/api/check-session', methods=['GET'])
+def check_session():
+    """Verificar si hay sesión activa"""
+    if 'user_id' in session:
+        return jsonify({
+            'authenticated': True,
+            'user': {
+                'id': session['user_id'],
+                'rut': session['username'],
+                'nombres': session.get('nombres', ''),
+                'apellido_p': session.get('apellido_p', ''),
+                'rol': session.get('rol', '')
+            }
+        }), 200
+    else:
+        return jsonify({'authenticated': False}), 401
+
+@app.route('/api/validar-clave-funcionario', methods=['POST'])
+@login_required
+def validar_clave_funcionario():
+    """Validar la clave del funcionario logueado"""
+    print("🔔 Petición de validación de clave de funcionario")
+    
+    data = request.get_json()
+    password = data.get('password')
+    
+    if not password:
+        return jsonify({'error': 'Contraseña requerida'}), 400
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Obtener datos del funcionario logueado
+        funcionario_id = session.get('user_id')
+        cur.execute("""
+            SELECT id, rut, nombres, apellido_p, apellido_m, password_hash, iniciales
+            FROM app.funcionarios 
+            WHERE id = %s AND activo = true
+        """, (funcionario_id,))
+        
+        funcionario = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not funcionario:
+            return jsonify({'error': 'Funcionario no encontrado'}), 404
+        
+        # Verificar la contraseña
+        if bcrypt.checkpw(password.encode('utf-8'), funcionario['password_hash'].encode('utf-8')):
+            nombre_completo = f"{funcionario['nombres']} {funcionario['apellido_p']} {funcionario['apellido_m'] or ''}".strip()
+            
+            return jsonify({
+                'valid': True,
+                'funcionario_id': funcionario['id'],
+                'funcionario_nombre': nombre_completo,
+                'funcionario_rut': funcionario['rut'],
+                'funcionario_iniciales': funcionario['iniciales']
+            }), 200
+        else:
+            return jsonify({
+                'valid': False,
+                'error': 'Contraseña incorrecta'
+            }), 200
+            
+    except Exception as e:
+        print(f'❌ Error validando clave de funcionario: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes/<int:solicitud_id>/firmar-funcionario', methods=['POST'])
+@login_required
+def firmar_solicitud_funcionario(solicitud_id):
+    """Firmar solicitud como funcionario"""
+    print(f"🔔 Petición de firma de funcionario para solicitud: {solicitud_id}")
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        data = request.get_json()
+        
+        # Validar datos requeridos
+        if not data.get('firma_data'):
+            return jsonify({'error': 'Datos de firma requeridos'}), 400
+        
+        firma_data = data['firma_data']
+        
+        cur = conn.cursor()
+        
+        # Verificar que la solicitud existe
+        cur.execute("SELECT id, expediente_id FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        solicitud = cur.fetchone()
+        
+        if not solicitud:
+            return jsonify({'error': 'Solicitud no encontrada'}), 404
+        
+        expediente_id = solicitud[1]
+        
+        # Actualizar validación con la firma del funcionario
+        cur.execute("""
+            UPDATE app.validacion 
+            SET val_firma_funcionario = %s,
+                val_estado = 'firmado_funcionario',
+                val_fecha_firma_funcionario = NOW()
+            WHERE solicitud_id = %s
+        """, (json.dumps(firma_data), solicitud_id))
+        
+        # Actualizar estado de la solicitud
+        cur.execute("""
+            UPDATE app.solicitudes 
+            SET estado = 'firmado_funcionario'
+            WHERE id = %s
+        """, (solicitud_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f'✅ Solicitud {solicitud_id} firmada por funcionario exitosamente')
+        
+        return jsonify({
+            'success': True,
+            'message': 'Solicitud firmada por funcionario exitosamente',
+            'data': {
+                'solicitud_id': solicitud_id,
+                'expediente_id': expediente_id,
+                'estado': 'firmado_funcionario',
+                'nota': 'Representante firmará con aplicación externa'
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error firmando solicitud como funcionario: {e}')
+        if 'conn' in locals():
+            conn.rollback()
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 

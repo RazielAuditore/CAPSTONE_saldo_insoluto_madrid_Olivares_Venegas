@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test RUT Format</title>
+</head>
+<body>
+    <h2>Prueba de Formateo de RUT</h2>
+    <input type="text" id="rut" placeholder="Escribe un RUT" oninput="formatearRUT(this)">
+    <p>Ejemplos:</p>
+    <ul>
+        <li>175182039 → 17.518.203-9</li>
+        <li>12345678k → 12.345.678-K</li>
+        <li>987654321 → 98.765.432-1</li>
+    </ul>
+
+    <script>
+        function formatearRUT(input) {
+            // Obtener solo números y K
+            let valor = input.value.replace(/[^0-9Kk]/g, '');
+            
+            // Limitar a 9 caracteres máximo
+            if (valor.length > 9) {
+                valor = valor.substring(0, 9);
+            }
+            
+            // Formatear con puntos y guión
+            if (valor.length > 0) {
+                let rutFormateado = '';
+                
+                // Si tiene más de 1 dígito, separar el dígito verificador
+                if (valor.length > 1) {
+                    const numero = valor.slice(0, -1); // Todo excepto el último dígito
+                    const dv = valor.slice(-1); // Último dígito (verificador)
+                    
+                    // Formatear el número con puntos
+                    let numeroFormateado = '';
+                    for (let i = numero.length - 1, j = 0; i >= 0; i--, j++) {
+                        if (j > 0 && j % 3 === 0) {
+                            numeroFormateado = '.' + numeroFormateado;
+                        }
+                        numeroFormateado = numero[i] + numeroFormateado;
+                    }
+                    
+                    rutFormateado = numeroFormateado + '-' + dv;
+                } else {
+                    rutFormateado = valor;
+                }
+                
+                input.value = rutFormateado;
+            }
+        }
+    </script>
+</body>
+</html>

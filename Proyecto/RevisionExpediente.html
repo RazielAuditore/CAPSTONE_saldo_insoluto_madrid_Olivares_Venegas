@@ -195,6 +195,7 @@
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({ rut: rut })
         });
         
@@ -216,6 +217,7 @@
         
         const resultado = await response.json();
         console.log('📋 Resultado completo:', resultado);
+        console.log('🔍 Datos del funcionario:', resultado.data?.funcionario);
         
         if (resultado.success) {
           if (resultado.data.expediente_id) {
@@ -238,6 +240,8 @@
     });
     
     function showExpediente(data) {
+      console.log('🔍 Datos recibidos en showExpediente:', data);
+      console.log('🔍 Funcionario en showExpediente:', data.funcionario);
       document.getElementById('expedienteContent').style.display = 'block';
       document.getElementById('noResults').style.display = 'none';
       
@@ -271,32 +275,6 @@
             </div>
             
             <div class="info-section">
-              <h3>👨‍💼 Datos del Representante</h3>
-              <div class="info-item">
-                <span class="info-label">Nombre:</span>
-                <span class="info-value">${data.representante.nombre_completo}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">RUT:</span>
-                <span class="info-value">${data.representante.rut}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Calidad:</span>
-                <span class="info-value">${data.representante.calidad}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Teléfono:</span>
-                <span class="info-value">${data.representante.telefono}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Email:</span>
-                <span class="info-value">${data.representante.email}</span>
-              </div>
-            </div>
-          </div>
-          
-          <div class="info-grid">
-            <div class="info-section">
               <h3>📄 Datos del Expediente</h3>
               <div class="info-item">
                 <span class="info-label">ID Expediente:</span>
@@ -318,17 +296,9 @@
                 <span class="info-label">Sucursal:</span>
                 <span class="info-value">${data.solicitud.sucursal}</span>
               </div>
-            </div>
-            
-            <div class="info-section">
-              <h3>📝 Datos de la Solicitud</h3>
               <div class="info-item">
-                <span class="info-label">Motivo:</span>
-                <span class="info-value">${data.solicitud.motivo}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Estado:</span>
-                <span class="info-value">${data.solicitud.estado}</span>
+                <span class="info-label">Funcionario Responsable:</span>
+                <span class="info-value">${data.funcionario.nombre_completo}</span>
               </div>
             </div>
           </div>
@@ -342,20 +312,59 @@
           </div>
           <div class="status-details">
             <div class="status-item">
-              <div class="status-number">${data.firmas.total_beneficiarios}</div>
-              <div class="status-label">Total Beneficiarios</div>
+              <div class="status-number">${data.firmas.total_firmas || 0}</div>
+              <div class="status-label">Total Firmas</div>
             </div>
             <div class="status-item">
-              <div class="status-number">${data.firmas.beneficiarios_firmados}</div>
-              <div class="status-label">Firmados</div>
+              <div class="status-number">${data.firmas.firmas_completadas || 0}</div>
+              <div class="status-label">Firmadas</div>
             </div>
             <div class="status-item">
-              <div class="status-number">${data.firmas.pendientes}</div>
+              <div class="status-number">${data.firmas.pendientes || 0}</div>
               <div class="status-label">Pendientes</div>
             </div>
             <div class="status-item">
               <div class="status-number" style="color:${data.firmas.color}">${data.firmas.estado}</div>
               <div class="status-label">Estado General</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Datos del Representante -->
+        <div class="status-card">
+          <div class="status-header">
+            <span class="status-icon">👨‍💼</span>
+            <h3 class="status-title">Datos del Representante</h3>
+            <div style="margin-left: auto;">
+              <span class="firma-status" style="background: ${data.representante.firmado ? '#d4edda' : '#f8d7da'}; color: ${data.representante.firmado ? '#155724' : '#721c24'}; padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: 600;">
+                ${data.representante.firmado ? '✅ Firmado' : '❌ Sin firmar'}
+              </span>
+            </div>
+          </div>
+          <div class="status-details">
+            <div class="status-item">
+              <div class="status-number" style="font-size: 16px; color: #333;">${data.representante.nombre_completo}</div>
+              <div class="status-label">Nombre Completo</div>
+            </div>
+            <div class="status-item">
+              <div class="status-number" style="font-size: 16px; color: #333;">${data.representante.rut}</div>
+              <div class="status-label">RUT</div>
+            </div>
+            <div class="status-item">
+              <div class="status-number" style="font-size: 16px; color: #333;">${data.representante.calidad}</div>
+              <div class="status-label">Calidad</div>
+            </div>
+            <div class="status-item">
+              <div class="status-number" style="font-size: 16px; color: #333;">${data.representante.telefono}</div>
+              <div class="status-label">Teléfono</div>
+            </div>
+            <div class="status-item">
+              <div class="status-number" style="font-size: 16px; color: #333;">${data.representante.email}</div>
+              <div class="status-label">Email</div>
+            </div>
+            <div class="status-item">
+              <div class="status-number" style="font-size: 16px; color: #666;">${data.representante.fecha_firma || 'No especificada'}</div>
+              <div class="status-label">Fecha de Firma</div>
             </div>
           </div>
         </div>
@@ -378,7 +387,7 @@
             <div class="beneficiario-info">
               <div class="beneficiario-nombre">${beneficiario.nombre_completo}</div>
               <div class="beneficiario-detalles">
-                RUT: ${beneficiario.rut} | Parentesco: ${beneficiario.parentesco} | Porcentaje: ${beneficiario.porcentaje}%
+                RUT: ${beneficiario.rut} | Parentesco: ${beneficiario.parentesco}
               </div>
             </div>
             <div class="firma-status">
@@ -474,3 +483,4 @@
   </script>
 </body>
 </html>
+
