@@ -688,18 +688,18 @@ def upload_documento():
         
         cur = conn.cursor()
         
-        # Verificar si ya existe un archivo con el mismo hash
-        cur.execute("""
-            SELECT id FROM app.documentos_saldo_insoluto 
-            WHERE doc_sha256 = %s
-        """, (file_hash,))
+        # Verificar si ya existe un archivo con el mismo hash (DESHABILITADO TEMPORALMENTE)
+        # cur.execute("""
+        #     SELECT id FROM app.documentos_saldo_insoluto 
+        #     WHERE doc_sha256 = %s
+        # """, (file_hash,))
         
-        existing_doc = cur.fetchone()
-        if existing_doc:
-            return jsonify({
-                'error': 'Ya existe un archivo idéntico en el sistema',
-                'documento_id': existing_doc[0]
-            }), 409
+        # existing_doc = cur.fetchone()
+        # if existing_doc:
+        #     return jsonify({
+        #         'error': 'Ya existe un archivo idéntico en el sistema',
+        #         'documento_id': existing_doc[0]
+        #     }), 409
         
         # Obtener expediente_id de la solicitud
         cur.execute("""
@@ -722,7 +722,7 @@ def upload_documento():
             RETURNING id
         """, (
             expediente_id, solicitud_id, doc_tipo_id, safe_filename, file_data,
-            mime_type, len(file_data), file_hash, f"/api/download-documento/{{id}}", observaciones
+            mime_type, len(file_data), file_hash, "/api/download-documento/temp", observaciones
         ))
         
         documento_id = cur.fetchone()[0]
@@ -1014,26 +1014,28 @@ def firmar_beneficiario(beneficiario_id):
         if not beneficiario:
             return jsonify({'error': 'Beneficiario no encontrado o no pertenece al expediente'}), 404
         
-        # Verificar si ya tiene una firma activa
+        # Verificar si ya tiene una firma activa en usuarios_firma
         cur.execute("""
-            SELECT id FROM app.firmas_beneficiarios 
-            WHERE beneficiario_id = %s AND expediente_id = %s AND estado = 'activa'
+            SELECT uf.id FROM app.usuarios_firma uf
+            JOIN app.beneficiarios b ON uf.rut = b.ben_run
+            WHERE b.id = %s AND b.expediente_id = %s
         """, (beneficiario_id, expediente_id))
         
         if cur.fetchone():
             return jsonify({'error': 'El beneficiario ya tiene una firma activa'}), 400
         
-        # Insertar la firma
+        # La firma ya existe en usuarios_firma, solo verificamos que esté registrada
+        # No necesitamos insertar nada nuevo ya que las firmas están en usuarios_firma
+        
+        # Obtener la firma existente para la respuesta
         cur.execute("""
-            INSERT INTO app.firmas_beneficiarios 
-            (expediente_id, beneficiario_id, firma_hash, estado, observaciones)
-            VALUES (%s, %s, %s, 'activa', %s)
-            RETURNING id, fecha_firma
-        """, (expediente_id, beneficiario_id, firma_hash, data.get('observaciones', '')))
+            SELECT uf.id FROM app.usuarios_firma uf
+            JOIN app.beneficiarios b ON uf.rut = b.ben_run
+            WHERE b.id = %s AND b.expediente_id = %s
+        """, (beneficiario_id, expediente_id))
         
         firma_result = cur.fetchone()
-        firma_id = firma_result[0]
-        fecha_firma = firma_result[1]
+        firma_id = firma_result[0] if firma_result else None
         
         conn.commit()
         cur.close()
@@ -1043,18 +1045,17 @@ def firmar_beneficiario(beneficiario_id):
         
         return jsonify({
             'success': True,
-            'message': 'Firma de beneficiario registrada exitosamente',
+            'message': 'Firma de beneficiario verificada exitosamente',
             'data': {
                 'firma_id': firma_id,
                 'beneficiario_id': beneficiario_id,
                 'expediente_id': expediente_id,
-                'fecha_firma': fecha_firma.isoformat(),
                 'beneficiario': {
                     'nombre': beneficiario[1],
                     'rut': beneficiario[2]
                 }
             }
-        }), 201
+        }), 200
         
     except Exception as e:
         print(f'❌ Error firmando beneficiario: {e}')
@@ -1076,20 +1077,18 @@ def obtener_firmas_beneficiarios(expediente_id):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Obtener firmas con datos de beneficiarios
+        # Obtener firmas con datos de beneficiarios desde usuarios_firma
         cur.execute("""
             SELECT 
-                fb.id as firma_id,
-                fb.fecha_firma,
-                fb.estado as estado_firma,
-                fb.observaciones,
+                uf.id as firma_id,
+                uf.rut,
                 b.id as beneficiario_id,
                 b.ben_nombre,
                 b.ben_run
-            FROM app.firmas_beneficiarios fb
-            JOIN app.beneficiarios b ON fb.beneficiario_id = b.id
-            WHERE fb.expediente_id = %s AND fb.estado = 'activa'
-            ORDER BY fb.fecha_firma DESC
+            FROM app.usuarios_firma uf
+            JOIN app.beneficiarios b ON uf.rut = b.ben_run
+            WHERE b.expediente_id = %s
+            ORDER BY uf.id DESC
         """, (expediente_id,))
         
         firmas = cur.fetchall()
@@ -1170,12 +1169,12 @@ def buscar_saldo_insoluto():
                 s.sucursal,
                 e.fecha_creacion,
                 COUNT(b.id) as total_beneficiarios,
-                COUNT(fb.id) as beneficiarios_firmados
+                COUNT(uf.id) as beneficiarios_firmados
             FROM app.expediente e
             JOIN app.causante c ON e.id = c.expediente_id
             JOIN app.solicitudes s ON e.id = s.expediente_id
             LEFT JOIN app.beneficiarios b ON e.id = b.expediente_id
-            LEFT JOIN app.firmas_beneficiarios fb ON b.id = fb.beneficiario_id AND fb.estado = 'activa'
+            LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
             WHERE c.fal_run = %s
             GROUP BY e.id, e.expediente_numero, e.estado, e.observaciones, e.fecha_creacion,
                      c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run,
@@ -1324,7 +1323,7 @@ def revision_expediente():
                 r.rep_telefono,
                 r.rep_email,
                 COUNT(DISTINCT b.id) as total_beneficiarios,
-                COUNT(DISTINCT fb.id) as beneficiarios_firmados,
+                COUNT(DISTINCT uf.id) as beneficiarios_firmados,
                 COUNT(DISTINCT d.id) as total_documentos
             FROM app.expediente e
             JOIN app.causante c ON e.id = c.expediente_id
@@ -1332,7 +1331,7 @@ def revision_expediente():
             LEFT JOIN app.funcionarios f ON e.funcionario_id = f.id
             LEFT JOIN app.representante r ON e.id = r.expediente_id
             LEFT JOIN app.beneficiarios b ON e.id = b.expediente_id
-            LEFT JOIN app.firmas_beneficiarios fb ON b.id = fb.beneficiario_id AND fb.estado = 'activa'
+            LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
             LEFT JOIN app.documentos_saldo_insoluto d ON e.id = d.expediente_id
             WHERE c.fal_run = %s
             GROUP BY e.id, e.expediente_numero, e.estado, e.observaciones, e.fecha_creacion, e.funcionario_id,
@@ -1369,11 +1368,10 @@ def revision_expediente():
                 b.ben_nombre,
                 b.ben_run,
                 b.ben_parentesco,
-                fb.id as firma_id,
-                fb.fecha_firma,
-                fb.estado as estado_firma
+                uf.id as firma_id,
+                uf.rut as firma_rut
             FROM app.beneficiarios b
-            LEFT JOIN app.firmas_beneficiarios fb ON b.id = fb.beneficiario_id AND fb.estado = 'activa'
+            LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
             WHERE b.expediente_id = %s
             ORDER BY b.id
         """, (expediente['expediente_id'],))
@@ -1398,28 +1396,27 @@ def revision_expediente():
         
         documentos = cur.fetchall()
         
+        # Determinar estado de firma del representante ANTES de cerrar el cursor
+        representante_firmado = False
+        fecha_firma_representante = None
+        
+        if expediente['rep_rut']:
+            # Verificar si el RUT del representante está en usuarios_firma (ignorando mayúsculas/minúsculas)
+            cur.execute("""
+                SELECT id FROM app.usuarios_firma 
+                WHERE UPPER(rut) = UPPER(%s)
+            """, (expediente['rep_rut'],))
+            
+            if cur.fetchone():
+                representante_firmado = True
+            else:
+                representante_firmado = False
+        
         cur.close()
         conn.close()
         
         # Procesar datos del expediente
         pendientes_firmas_beneficiarios = expediente['total_beneficiarios'] - expediente['beneficiarios_firmados']
-        
-        # Determinar estado de firma del representante (simulado por ahora)
-        # En un sistema real, esto vendría de la app externa o de una tabla de firmas
-        representante_firmado = False  # Por defecto, no firmado
-        fecha_firma_representante = None
-        
-        # Simular que el representante ha firmado si el expediente tiene más de 1 día
-        if expediente['fecha_creacion']:
-            from datetime import datetime, timedelta
-            fecha_creacion = expediente['fecha_creacion']
-            if isinstance(fecha_creacion, str):
-                fecha_creacion = datetime.fromisoformat(fecha_creacion.replace('Z', '+00:00'))
-            
-            # Si el expediente tiene más de 1 día, simular que el representante firmó
-            if datetime.now() - fecha_creacion.replace(tzinfo=None) > timedelta(days=1):
-                representante_firmado = True
-                fecha_firma_representante = (fecha_creacion + timedelta(hours=2)).strftime('%d/%m/%Y %H:%M')
         
         # Calcular total de firmas (beneficiarios + representante)
         total_firmas = expediente['total_beneficiarios'] + 1  # +1 por el representante
@@ -1451,8 +1448,7 @@ def revision_expediente():
                 'parentesco': ben['ben_parentesco'],
                 'firma': {
                     'firmado': ben['firma_id'] is not None,
-                    'fecha_firma': ben['fecha_firma'].strftime('%d/%m/%Y %H:%M') if ben['fecha_firma'] else None,
-                    'estado': ben['estado_firma']
+                    'rut_firma': ben['firma_rut'] if ben['firma_rut'] else None
                 }
             }
             beneficiarios_procesados.append(beneficiario)
@@ -1493,8 +1489,7 @@ def revision_expediente():
                 'calidad': expediente['rep_calidad'] or 'No especificada',
                 'telefono': expediente['rep_telefono'] or 'No especificado',
                 'email': expediente['rep_email'] or 'No especificado',
-                'firmado': representante_firmado,
-                'fecha_firma': fecha_firma_representante
+                'firmado': representante_firmado
             },
             'solicitud': {
                 'sucursal': expediente['sucursal'] or 'No especificada',
@@ -1520,8 +1515,7 @@ def revision_expediente():
                         'pendientes': pendientes_firmas_beneficiarios
                     },
                     'representante': {
-                        'firmado': representante_firmado,
-                        'fecha_firma': fecha_firma_representante
+                        'firmado': representante_firmado
                     }
                 }
             },

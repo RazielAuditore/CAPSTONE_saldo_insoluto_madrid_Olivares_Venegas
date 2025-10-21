@@ -35,3 +35,16 @@ print("🔧 Generando hash para 'Soulcry02':")
 new_hash = bcrypt.hashpw("Soulcry02".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 print(f"Nuevo hash: {new_hash}")
 
+
+
+
+
+
+
+
+
+
+
+
+
+

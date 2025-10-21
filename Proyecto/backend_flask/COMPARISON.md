@@ -82,3 +82,16 @@ expediente_id = cur.fetchone()[0]
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
