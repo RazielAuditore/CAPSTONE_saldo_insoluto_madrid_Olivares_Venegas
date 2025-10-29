@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saldo Insoluto - Aprobación de Solicitudes</title>
+  <style>
+    :root { 
+      --c1: #0d6efd; 
+      --c2: #f8f9fa; 
+      --b: #212529; 
+      --muted: #6c757d; 
+      --ok: #28a745; 
+      --bad: #dc3545; 
+      --warning: #ffc107;
+      --info: #17a2b8;
+    }
+    
+    * { box-sizing: border-box; }
+    
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: linear-gradient(120deg, #e3f0ff 0%, #f7e3e3 100%, #f5f7fb 100%);
+      color: #222;
+      min-height: 100vh;
+    }
+    
+    .header {
+      background: linear-gradient(160deg, #fff4f4 0%, #ffd6d6 100%);
+      padding: 20px;
+      border-bottom: 1px solid #e5e7eb;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .header h1 {
+      margin: 0;
+      color: #333;
+      font-size: 24px;
+    }
+    
+    .header p {
+      margin: 5px 0 0 0;
+      color: var(--muted);
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .filters {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    
+    .filters h3 {
+      margin: 0 0 15px 0;
+      color: #333;
+    }
+    
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 15px;
+      align-items: end;
+    }
+    
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .filter-group label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    
+    .filter-group select,
+    .filter-group input {
+      padding: 10px;
+      border: 1px solid #ced4da;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: var(--c1);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #0b5ed7;
+    }
+    
+    .btn-success {
+      background: var(--ok);
+      color: white;
+    }
+    
+    .btn-danger {
+      background: var(--bad);
+      color: white;
+    }
+    
+    .btn-warning {
+      background: var(--warning);
+      color: #212529;
+    }
+    
+    .btn-info {
+      background: var(--info);
+      color: white;
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+    
+    .solicitudes-list {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    
+    .solicitud-item {
+      border-bottom: 1px solid #e9ecef;
+      padding: 20px;
+      transition: background-color 0.2s;
+    }
+    
+    .solicitud-item:hover {
+      background-color: #f8f9fa;
+    }
+    
+    .solicitud-item:last-child {
+      border-bottom: none;
+    }
+    
+    .solicitud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+    }
+    
+    .solicitud-info h4 {
+      margin: 0 0 5px 0;
+      color: #333;
+      font-size: 18px;
+    }
+    
+    .solicitud-meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    
+    .estado-badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    
+    .estado-pendiente {
+      background: #fff3cd;
+      color: #856404;
+    }
+    
+    .estado-firmado {
+      background: #d1ecf1;
+      color: #0c5460;
+    }
+    
+    .estado-completado {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .solicitud-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 15px;
+    }
+    
+    .detail-group h5 {
+      margin: 0 0 8px 0;
+      color: #555;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    
+    .detail-group p {
+      margin: 0;
+      color: #333;
+      font-size: 14px;
+    }
+    
+    .solicitud-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+    
+    .no-results {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+    }
+    
+    .modal-content {
+      background-color: white;
+      margin: 5% auto;
+      padding: 0;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    
+    .modal-header {
+      background: linear-gradient(160deg, #fff4f4 0%, #ffd6d6 100%);
+      padding: 20px;
+      border-radius: 12px 12px 0 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .modal-header h2 {
+      margin: 0;
+      color: #333;
+    }
+    
+    .modal-body {
+      padding: 20px;
+    }
+    
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    
+    .close:hover {
+      color: #000;
+    }
+    
+    .requisitos-section {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .requisitos-section h4 {
+      margin: 0 0 10px 0;
+      color: #333;
+    }
+    
+    .requisito-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 8px;
+      background: white;
+      border-radius: 6px;
+      border-left: 4px solid #e9ecef;
+    }
+    
+    .requisito-item.cumple {
+      border-left-color: var(--ok);
+    }
+    
+    .requisito-item.no-cumple {
+      border-left-color: var(--bad);
+    }
+    
+    .requisito-icon {
+      margin-right: 10px;
+      font-size: 16px;
+    }
+    
+    .requisito-text {
+      flex: 1;
+      font-size: 14px;
+    }
+    
+    .modal-actions {
+      padding: 20px;
+      border-top: 1px solid #e9ecef;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    
+    @media (max-width: 768px) {
+      .filter-row {
+        grid-template-columns: 1fr;
+      }
+      
+      .solicitud-details {
+        grid-template-columns: 1fr;
+      }
+      
+      .solicitud-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      
+      .solicitud-actions {
+        justify-content: flex-start;
+        margin-top: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📋 Aprobación de Solicitudes</h1>
+    <p>Revisa y aprueba las solicitudes de saldo insoluto pendientes de jefatura</p>
+  </div>
+
+  <div class="container">
+    <!-- Filtros -->
+    <div class="filters">
+      <h3>🔍 Filtros de Búsqueda</h3>
+      <div class="filter-row">
+        <div class="filter-group">
+          <label for="filtro-rut">RUT causante (opcional)</label>
+          <input id="filtro-rut" type="text" placeholder="12.345.678-9 (opcional)">
+        </div>
+        <div class="filter-group">
+          <label for="filtro-estado">Estado</label>
+          <select id="filtro-estado">
+            <option value="">Todos los estados</option>
+            <option value="borrador">Borrador</option>
+            <option value="firmado_funcionario">Firmado por Funcionario</option>
+            <option value="completado">Completado</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filtro-sucursal">Sucursal</label>
+          <select id="filtro-sucursal">
+            <option value="">Todas las sucursales</option>
+            <option value="providencia">Providencia</option>
+            <option value="nunoa">Ñuñoa</option>
+            <option value="santo_domingo">Santo Domingo</option>
+            <option value="IPS Central">IPS Central</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="cargarSolicitudes()">
+          🔍 Buscar
+        </button>
+      </div>
+    </div>
+
+    <!-- Lista de solicitudes -->
+    <div class="solicitudes-list">
+      <div id="loading" class="loading" style="display: none;">
+        <p>🔄 Cargando solicitudes...</p>
+      </div>
+      
+      <div id="no-results" class="no-results" style="display: none;">
+        <p>📭 No se encontraron solicitudes con los filtros aplicados</p>
+      </div>
+      
+      <div id="solicitudes-container">
+        <!-- Las solicitudes se cargarán aquí dinámicamente -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de detalles -->
+  <div id="modal-detalles" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="close" onclick="cerrarModal()">&times;</span>
+        <h2 id="modal-titulo">Detalles de la Solicitud</h2>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <!-- Contenido del modal se cargará aquí -->
+      </div>
+      <div class="modal-actions" id="modal-actions">
+        <!-- Botones de acción se cargarán aquí -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Variables globales
+    let solicitudesData = [];
+    let solicitudActual = null;
+
+  // Cargar solicitudes al iniciar
+    document.addEventListener('DOMContentLoaded', function() {
+      cargarSolicitudes();
+    });
+
+    // Utilidad: formateo de RUT básico
+    function limpiarRut(r){ return (r||'').replace(/\./g,'').replace(/-/g,'').toUpperCase(); }
+
+    // Función para cargar solicitudes desde el backend
+    async function cargarSolicitudes() {
+      const loading = document.getElementById('loading');
+      const noResults = document.getElementById('no-results');
+      const container = document.getElementById('solicitudes-container');
+      const rutInput = (document.getElementById('filtro-rut')?.value || '').trim();
+      
+      loading.style.display = 'block';
+      noResults.style.display = 'none';
+      container.innerHTML = '';
+
+      try {
+        // Si hay RUT, consultar expediente para ese RUT
+        if (rutInput) {
+          const resp = await fetch('http://localhost:3001/api/revision-expediente', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ rut: rutInput })
+          });
+
+          if (resp.status === 401) {
+            loading.style.display = 'none';
+            alert('Sesión no válida. Inicia sesión e inténtalo de nuevo.');
+            return;
+          }
+
+          const data = await resp.json();
+          if (data.success && data.data && data.data.expediente_id) {
+            solicitudesData = [mapResultadoAUI(data.data)];
+          } else if (data.success && data.data && data.data.expediente) {
+            // compatibilidad por si la estructura es diferente
+            solicitudesData = [mapResultadoAUI(data.data.expediente)];
+          } else {
+            solicitudesData = [];
+          }
+        } else {
+          // Sin RUT: listar pendientes de jefatura
+          const qs = new URLSearchParams();
+          const filtroEstado = document.getElementById('filtro-estado').value || 'firmado_funcionario';
+          const filtroSucursal = document.getElementById('filtro-sucursal').value || '';
+          if (filtroEstado) qs.append('estado', filtroEstado);
+          if (filtroSucursal) qs.append('sucursal', filtroSucursal);
+
+          const resp = await fetch('http://localhost:3001/api/solicitudes-pendientes?' + qs.toString(), {
+            method: 'GET',
+            credentials: 'include'
+          });
+
+          if (resp.status === 401) {
+            loading.style.display = 'none';
+            alert('Sesión no válida. Inicia sesión e inténtalo de nuevo.');
+            return;
+          }
+
+          const data = await resp.json();
+          if (data.success && Array.isArray(data.data)) {
+            solicitudesData = data.data.map(x => ({
+              id: x.expediente_id,
+              folio: x.folio,
+              estado: x.estado_solicitud,
+              fecha_creacion: x.fecha_creacion,
+              sucursal: x.sucursal || 'No especificada',
+              funcionario: { nombre_completo: '', iniciales: '' },
+              causante: {
+                nombre_completo: x.causante?.nombre_completo || '',
+                rut: x.causante?.rut || '',
+                fecha_defuncion: x.causante?.fecha_defuncion || ''
+              },
+              representante: { nombre_completo: 'No especificado', rut: 'No especificado', calidad: 'No especificada' },
+              firmas: {
+                total_firmas: x.firmas?.total_beneficiarios || 0,
+                firmas_completadas: x.firmas?.beneficiarios_firmados || 0,
+                pendientes: x.firmas?.pendientes || 0
+              },
+              documentos: { total: 0, lista: [] },
+              beneficiarios: []
+            }));
+          } else {
+            solicitudesData = [];
+          }
+        }
+
+        // Aplicar filtros
+        let solicitudesFiltradas = solicitudesData;
+        
+        const filtroEstado = document.getElementById('filtro-estado').value;
+        const filtroSucursal = document.getElementById('filtro-sucursal').value;
+        
+        if (filtroEstado) {
+          solicitudesFiltradas = solicitudesFiltradas.filter(s => s.estado === filtroEstado);
+        }
+        
+        if (filtroSucursal) {
+          solicitudesFiltradas = solicitudesFiltradas.filter(s => s.sucursal === filtroSucursal);
+        }
+
+        loading.style.display = 'none';
+
+        if (solicitudesFiltradas.length === 0) {
+          noResults.style.display = 'block';
+        } else {
+          mostrarSolicitudes(solicitudesFiltradas);
+        }
+
+      } catch (error) {
+        console.error('Error cargando solicitudes:', error);
+        loading.style.display = 'none';
+        container.innerHTML = '<div class="no-results"><p>❌ Error cargando las solicitudes</p></div>';
+      }
+    }
+
+    // Mapear el resultado del backend (estructura /api/revision-expediente) a la UI de esta página
+    function mapResultadoAUI(r){
+      // r es data.resultado del backend
+      const documentosLista = (r.documentos?.lista || []).map(d => ({ nombre: d.nombre, tipo: `Tipo ${d.tipo_id||''}` }));
+      const beneficiarios = (r.beneficiarios || []).map(b => ({
+        nombre: b.nombre_completo,
+        rut: b.rut,
+        parentesco: b.parentesco || '',
+        firmado: b.firma?.firmado === true || b.firma?.rut_firma
+      }));
+
+      return {
+        id: r.expediente_id,
+        folio: r.folio,
+        estado: r.solicitud?.estado || r.estado_expediente || 'borrador',
+        fecha_creacion: r.fecha_creacion,
+        sucursal: r.solicitud?.sucursal || 'No especificada',
+        funcionario: {
+          nombre_completo: r.funcionario?.nombre_completo || '',
+          iniciales: r.funcionario?.iniciales || ''
+        },
+        causante: {
+          nombre_completo: r.causante?.nombre_completo || '',
+          rut: r.causante?.rut || '',
+          fecha_defuncion: r.causante?.fecha_defuncion || ''
+        },
+        representante: {
+          nombre_completo: r.representante?.nombre_completo || 'No especificado',
+          rut: r.representante?.rut || 'No especificado',
+          calidad: r.representante?.calidad || 'No especificada'
+        },
+        firmas: {
+          total_firmas: r.firmas?.total_firmas || 0,
+          firmas_completadas: r.firmas?.firmas_completadas || 0,
+          pendientes: r.firmas?.pendientes || 0
+        },
+        documentos: {
+          total: r.documentos?.total || documentosLista.length,
+          lista: documentosLista
+        },
+        beneficiarios
+      };
+    }
+
+    // Función para mostrar las solicitudes en la interfaz
+    function mostrarSolicitudes(solicitudes) {
+      const container = document.getElementById('solicitudes-container');
+      
+      container.innerHTML = solicitudes.map(solicitud => `
+        <div class="solicitud-item">
+          <div class="solicitud-header">
+            <div class="solicitud-info">
+              <h4>${solicitud.folio} - ${solicitud.causante.nombre_completo}</h4>
+              <div class="solicitud-meta">
+                📅 Creado: ${formatearFecha(solicitud.fecha_creacion)} | 
+                🏢 ${solicitud.sucursal} | 
+                👤 Funcionario: ${solicitud.funcionario.iniciales}
+              </div>
+            </div>
+            <span class="estado-badge estado-${solicitud.estado}">
+              ${obtenerTextoEstado(solicitud.estado)}
+            </span>
+          </div>
+          
+          <div class="solicitud-details">
+            <div class="detail-group">
+              <h5>👤 Causante</h5>
+              <p><strong>${solicitud.causante.nombre_completo}</strong></p>
+              <p>RUT: ${solicitud.causante.rut}</p>
+              <p>Fallecimiento: ${formatearFecha(solicitud.causante.fecha_defuncion)}</p>
+            </div>
+            
+            <div class="detail-group">
+              <h5>👨‍💼 Representante</h5>
+              <p><strong>${solicitud.representante.nombre_completo}</strong></p>
+              <p>RUT: ${solicitud.representante.rut}</p>
+              <p>Calidad: ${solicitud.representante.calidad}</p>
+            </div>
+            
+            <div class="detail-group">
+              <h5>📋 Progreso</h5>
+              <p>Beneficiarios: ${solicitud.beneficiarios.length}</p>
+              <p>Firmas: ${solicitud.firmas.firmas_completadas}/${solicitud.firmas.total_firmas}</p>
+              <p>Documentos: ${solicitud.documentos.total}</p>
+            </div>
+          </div>
+          
+          <div class="solicitud-actions">
+            <button class="btn btn-info" onclick="verDetalles(${solicitud.id})">
+              👁️ Ver Detalles
+            </button>
+            ${solicitud.estado === 'firmado_funcionario' ? `
+              <button class="btn btn-success" onclick="aprobarSolicitud(${solicitud.id})">
+                ✅ Aprobar
+              </button>
+            ` : ''}
+            <button class="btn btn-warning" onclick="rechazarSolicitud(${solicitud.id})">
+              ❌ Rechazar
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Función para ver detalles de una solicitud
+    function verDetalles(solicitudId) {
+      solicitudActual = solicitudesData.find(s => s.id === solicitudId);
+      
+      if (!solicitudActual) return;
+
+      const modal = document.getElementById('modal-detalles');
+      const titulo = document.getElementById('modal-titulo');
+      const body = document.getElementById('modal-body');
+      const actions = document.getElementById('modal-actions');
+
+      titulo.textContent = `Detalles: ${solicitudActual.folio}`;
+
+      // Verificar requisitos
+      const requisitos = verificarRequisitos(solicitudActual);
+
+      body.innerHTML = `
+        <div class="requisitos-section">
+          <h4>📋 Verificación de Requisitos</h4>
+          ${requisitos.map(req => `
+            <div class="requisito-item ${req.cumple ? 'cumple' : 'no-cumple'}">
+              <span class="requisito-icon">${req.cumple ? '✅' : '❌'}</span>
+              <span class="requisito-text">${req.descripcion}</span>
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div>
+            <h4>👤 Datos del Causante</h4>
+            <p><strong>Nombre:</strong> ${solicitudActual.causante.nombre_completo}</p>
+            <p><strong>RUT:</strong> ${solicitudActual.causante.rut}</p>
+            <p><strong>Fecha de fallecimiento:</strong> ${formatearFecha(solicitudActual.causante.fecha_defuncion)}</p>
+          </div>
+          
+          <div>
+            <h4>👨‍💼 Datos del Representante</h4>
+            <p><strong>Nombre:</strong> ${solicitudActual.representante.nombre_completo}</p>
+            <p><strong>RUT:</strong> ${solicitudActual.representante.rut}</p>
+            <p><strong>Calidad:</strong> ${solicitudActual.representante.calidad}</p>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <h4>👥 Beneficiarios</h4>
+          <div style="display: grid; gap: 10px;">
+            ${solicitudActual.beneficiarios.map(ben => `
+              <div style="padding: 10px; background: #f8f9fa; border-radius: 6px; border-left: 4px solid ${ben.firmado ? '#28a745' : '#ffc107'};">
+                <strong>${ben.nombre}</strong> (${ben.rut})<br>
+                <small>Parentesco: ${ben.parentesco} | ${ben.firmado ? '✅ Firmado' : '⏳ Pendiente'}</small>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <h4>📁 Documentos</h4>
+          <div style="display: grid; gap: 10px;">
+            ${solicitudActual.documentos.lista.map(doc => `
+              <div style="padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                <strong>${doc.tipo}</strong><br>
+                <small>${doc.nombre}</small>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      // Botones de acción
+      const puedeAprobar = requisitos.every(req => req.cumple);
+      
+      actions.innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
+        ${puedeAprobar ? `
+          <button class="btn btn-success" onclick="aprobarSolicitud(${solicitudActual.id})">
+            ✅ Aprobar Solicitud
+          </button>
+        ` : `
+          <button class="btn btn-warning" onclick="rechazarSolicitud(${solicitudActual.id})">
+            ❌ Rechazar (Faltan requisitos)
+          </button>
+        `}
+      `;
+
+      modal.style.display = 'block';
+    }
+
+    // Función para verificar requisitos de una solicitud
+    function verificarRequisitos(solicitud) {
+      return [
+        {
+          descripcion: 'Solicitud firmada por funcionario',
+          cumple: solicitud.estado === 'firmado_funcionario' || solicitud.estado === 'completado'
+        },
+        {
+          descripcion: 'Todos los beneficiarios han firmado',
+          cumple: solicitud.firmas.pendientes === 0
+        },
+        {
+          descripcion: 'Documentos requeridos subidos',
+          cumple: solicitud.documentos.total >= 2
+        },
+        {
+          descripcion: 'Datos del causante completos',
+          cumple: solicitud.causante.nombre_completo && solicitud.causante.rut && solicitud.causante.fecha_defuncion
+        },
+        {
+          descripcion: 'Datos del representante completos',
+          cumple: solicitud.representante.nombre_completo && solicitud.representante.rut && solicitud.representante.calidad
+        }
+      ];
+    }
+
+    // Función para aprobar una solicitud
+    async function aprobarSolicitud(solicitudId) {
+      if (!confirm('¿Estás seguro de que deseas aprobar esta solicitud?')) {
+        return;
+      }
+
+      try {
+        // Aquí iría la llamada al backend para aprobar
+        // const response = await fetch(`/api/solicitudes/${solicitudId}/aprobar`, {
+        //   method: 'POST',
+        //   credentials: 'include'
+        // });
+
+        // Simular aprobación exitosa
+        alert('✅ Solicitud aprobada exitosamente');
+        
+        // Actualizar el estado local
+        const solicitud = solicitudesData.find(s => s.id === solicitudId);
+        if (solicitud) {
+          solicitud.estado = 'completado';
+        }
+        
+        cerrarModal();
+        cargarSolicitudes();
+        
+      } catch (error) {
+        console.error('Error aprobando solicitud:', error);
+        alert('❌ Error al aprobar la solicitud');
+      }
+    }
+
+    // Función para rechazar una solicitud
+    async function rechazarSolicitud(solicitudId) {
+      const motivo = prompt('Ingresa el motivo del rechazo:');
+      if (!motivo) return;
+
+      try {
+        // Aquí iría la llamada al backend para rechazar
+        // const response = await fetch(`/api/solicitudes/${solicitudId}/rechazar`, {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   credentials: 'include',
+        //   body: JSON.stringify({ motivo })
+        // });
+
+        alert('❌ Solicitud rechazada');
+        cerrarModal();
+        cargarSolicitudes();
+        
+      } catch (error) {
+        console.error('Error rechazando solicitud:', error);
+        alert('❌ Error al rechazar la solicitud');
+      }
+    }
+
+    // Función para cerrar el modal
+    function cerrarModal() {
+      document.getElementById('modal-detalles').style.display = 'none';
+    }
+
+    // Función para formatear fechas
+    function formatearFecha(fecha) {
+      if (!fecha) return 'No especificada';
+      return new Date(fecha).toLocaleDateString('es-CL');
+    }
+
+    // Función para obtener texto del estado
+    function obtenerTextoEstado(estado) {
+      const estados = {
+        'borrador': 'Borrador',
+        'firmado_funcionario': 'Firmado por Funcionario',
+        'completado': 'Completado'
+      };
+      return estados[estado] || estado;
+    }
+
+    // Cerrar modal al hacer clic fuera de él
+    window.onclick = function(event) {
+      const modal = document.getElementById('modal-detalles');
+      if (event.target === modal) {
+        cerrarModal();
+      }
+    }
+  </script>
+</body>
+</html>
