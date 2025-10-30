@@ -10,13 +10,19 @@ import hashlib
 import hmac
 import secrets
 import io
+import zipfile
 import bcrypt
 from werkzeug.utils import secure_filename
 from config import Config
 from functools import wraps
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=['http://localhost:8000'])
+CORS(app, supports_credentials=True, origins=[
+    'http://localhost:8000',
+    'http://localhost:8080',
+    'http://127.0.0.1:8000',
+    'http://127.0.0.1:8080'
+])
 
 # Configuración de sesiones
 app.config['SECRET_KEY'] = 'tu_clave_secreta_muy_segura_aqui'
@@ -48,6 +54,8 @@ def login_required(f):
 
 # Configuración de la aplicación
 app.config.from_object(Config)
+
+# CORS ya configurado arriba
 
 # Configuración de la base de datos
 DB_CONFIG = Config().DATABASE_CONFIG
@@ -1742,6 +1750,58 @@ def firmar_solicitud_funcionario(solicitud_id):
         print(f'❌ Error firmando solicitud como funcionario: {e}')
         if 'conn' in locals():
             conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/download-expediente-completo/<int:expediente_id>', methods=['GET'])
+@login_required
+def download_expediente_completo(expediente_id):
+    """Descargar todos los documentos del expediente como ZIP"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Obtener todos los documentos del expediente
+        cur.execute("""
+            SELECT id, doc_nombre_archivo, doc_archivo_blob, doc_mime_type
+            FROM app.documentos_saldo_insoluto 
+            WHERE expediente_id = %s
+            ORDER BY doc_fecha_subida ASC
+        """, (expediente_id,))
+        
+        documentos = cur.fetchall()
+        
+        if not documentos:
+            return jsonify({'error': 'No hay documentos en este expediente'}), 404
+        
+        # Crear ZIP en memoria
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for i, documento in enumerate(documentos):
+                # Usar el nombre del archivo original
+                zip_file.writestr(documento['doc_nombre_archivo'], documento['doc_archivo_blob'])
+        
+        zip_buffer.seek(0)
+        
+        cur.close()
+        conn.close()
+        
+        print(f'📦 Generando ZIP con {len(documentos)} documentos para expediente {expediente_id}')
+        
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'expediente_{expediente_id}_completo.zip'
+        )
+        
+    except Exception as e:
+        print(f'❌ Error generando ZIP: {e}')
+        if 'conn' in locals():
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 

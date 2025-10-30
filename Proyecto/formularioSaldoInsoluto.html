@@ -759,26 +759,57 @@
 
     // ----- Subir todos los archivos de una solicitud -----
     async function subirTodosLosArchivos(solicitudId) {
-      const archivos = document.querySelectorAll('input[name="documento[]"]');
-      const tipos = document.querySelectorAll('select[name="tipo_documento[]"]');
+      // Obtener todos los contenedores de documentos (incluyendo los agregados dinámicamente)
+      const documentoItems = document.querySelectorAll('#documentos-container .documento-item');
       
       const resultados = [];
+      let archivosSubidosCount = 0;
       
-      for (let i = 0; i < archivos.length; i++) {
-        const archivo = archivos[i].files[0];
-        const tipo = tipos[i].value;
+      console.log(`📁 Encontrados ${documentoItems.length} campos de documento`);
+      
+      // Recorrer cada contenedor de documento
+      for (let i = 0; i < documentoItems.length; i++) {
+        const item = documentoItems[i];
+        const archivoInput = item.querySelector('input[name="documento[]"]');
+        const tipoSelect = item.querySelector('select[name="tipo_documento[]"]');
         
+        if (!archivoInput || !tipoSelect) {
+          console.warn(`⚠️ Documento ${i + 1}: Campos no encontrados`);
+          continue;
+        }
+        
+        const archivo = archivoInput.files[0];
+        const tipo = tipoSelect.value;
+        
+        // Debug
+        console.log(`🔍 Documento ${i + 1}:`, {
+          archivo: archivo ? archivo.name : 'No hay archivo',
+          tipo: tipo || 'No hay tipo seleccionado'
+        });
+        
+        // Solo subir si tiene archivo Y tipo seleccionado
         if (archivo && tipo) {
           try {
+            archivosSubidosCount++;
+            console.log(`📤 Subiendo archivo ${archivosSubidosCount}: ${archivo.name} (tipo: ${tipo})`);
             const resultado = await subirArchivo(archivo, solicitudId, tipo);
             resultados.push(resultado);
-            console.log(`✅ Archivo ${i + 1} subido: ${archivo.name}`);
+            console.log(`✅ Archivo ${archivosSubidosCount} subido exitosamente: ${archivo.name}`);
           } catch (error) {
-            console.error(`❌ Error subiendo archivo ${i + 1}:`, error);
-            alert(`Error subiendo archivo "${archivo.name}": ${error.message}`);
+            console.error(`❌ Error subiendo archivo ${archivosSubidosCount} "${archivo.name}":`, error);
+            // Mostrar alerta pero continuar con los demás archivos
+            alert(`⚠️ Error subiendo archivo "${archivo.name}": ${error.message}`);
+          }
+        } else {
+          if (archivo && !tipo) {
+            console.warn(`⚠️ Archivo "${archivo.name}" no tiene tipo seleccionado - Omitido`);
+          } else if (!archivo && tipo) {
+            console.warn(`⚠️ Tipo seleccionado pero no hay archivo - Omitido`);
           }
         }
       }
+      
+      console.log(`📊 Resumen: ${archivosSubidosCount} archivo(s) procesado(s) de ${documentoItems.length} campos`);
       
       return resultados;
     }
@@ -974,7 +1005,8 @@
           ? `\n\n📁 Archivos subidos: ${archivosSubidos.length}`
           : '\n\n📁 No se subieron archivos';
         
-        alert(`✅ Solicitud guardada exitosamente!\n\nFolio: ${resultado.data.folio}\nID de Solicitud: ${resultado.data.solicitud_id}${mensajeArchivos}\n\nLos datos se han guardado en la base de datos.`);
+        // Mostrar modal de éxito en lugar de alert
+        mostrarModalExito(resultado.data, mensajeArchivos);
 
         // Opcional: Descargar JSON de respaldo
         const dataCompleto = {
@@ -1004,8 +1036,6 @@
         // Resetear badge
         document.getElementById("badge_func").style.display = "none";
 
-        goTab('rep'); // Volver al inicio
-
       } catch (error) {
         console.error('Error:', error);
         alert(`❌ Error al guardar la solicitud:\n\n${error.message}\n\nPor favor, verifica que el servidor esté corriendo y vuelve a intentar.`);
@@ -1014,6 +1044,63 @@
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
       }
+    }
+    // Función para mostrar modal de éxito
+    function mostrarModalExito(datos, mensajeArchivos) {
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+      `;
+      
+      modal.innerHTML = `
+        <div style="
+          background: white;
+          padding: 40px;
+          border-radius: 16px;
+          max-width: 500px;
+          text-align: center;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        ">
+          <div style="font-size: 64px; margin-bottom: 20px;">✅</div>
+          <h2 style="color: #28a745; margin-bottom: 20px;">¡Expediente Creado Exitosamente!</h2>
+          <div style="text-align: left; margin-bottom: 20px;">
+            <p><strong>Folio:</strong> ${datos.folio}</p>
+            <p><strong>Expediente:</strong> ${datos.expediente_numero}</p>
+            <p><strong>Estado:</strong> ${datos.estado}</p>
+            ${mensajeArchivos}
+          </div>
+          <button onclick="window.location.href='index.html'" style="
+            background: #0d6efd;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: 600;
+          ">
+            🏠 Volver al Inicio
+          </button>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      // Cerrar modal si hace click fuera
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+          document.body.removeChild(modal);
+        }
+      });
     }
   </script>
 </body>

@@ -5,8 +5,8 @@ from psycopg2.extras import RealDictCursor
 from config import Config
 
 def update_password():
-    # Generar hash para Admin1234
-    password = "Admin1234"
+    # Generar hash para Admin1234. (con punto)
+    password = "Admin1234."
     new_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
     print(f"🔧 Generando hash para: {password}")
@@ -33,7 +33,7 @@ def update_password():
         else:
             print(f"❌ No se encontró funcionario con RUT: {rut_sebastian}")
         
-        # Actualizar password para Jose Antonio (opcional)
+        # Actualizar password para Jose Antonio
         rut_jose = "18.075.712-0"
         cur.execute("""
             UPDATE app.funcionarios 
@@ -68,6 +68,8 @@ def update_password():
 
 if __name__ == "__main__":
     update_password()
+
+
 
 
 
