@@ -1319,6 +1319,7 @@ def revision_expediente():
                 c.fal_fecha_defuncion,
                 c.fal_comuna_defuncion,
                 c.fal_nacionalidad,
+                s.id as solicitud_id,
                 s.folio,
                 s.estado as estado_solicitud,
                 s.sucursal,
@@ -1346,7 +1347,7 @@ def revision_expediente():
                      f.iniciales, f.nombres, f.apellido_p, f.apellido_m,
                      c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run,
                      c.fal_fecha_defuncion, c.fal_comuna_defuncion, c.fal_nacionalidad,
-                     s.folio, s.estado, s.sucursal, s.observacion,
+                     s.id, s.folio, s.estado, s.sucursal, s.observacion,
                      r.rep_nombre, r.rep_apellido_p, r.rep_apellido_m, r.rep_rut,
                      r.rep_calidad, r.rep_telefono, r.rep_email
             ORDER BY e.fecha_creacion DESC
@@ -1500,6 +1501,7 @@ def revision_expediente():
                 'firmado': representante_firmado
             },
             'solicitud': {
+                'id': expediente['solicitud_id'],
                 'sucursal': expediente['sucursal'] or 'No especificada',
                 'motivo': expediente['motivo_solicitud'] or 'No especificado',
                 'estado': expediente['estado_solicitud']
@@ -1805,10 +1807,131 @@ def download_expediente_completo(expediente_id):
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
+@app.route('/api/calcular-saldo-insoluto', methods=['POST'])
+@login_required
+def guardar_calculo_saldo():
+    """Guardar cálculo de saldo insoluto"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        data = request.get_json()
+        expediente_id = data.get('expediente_id')
+        solicitud_id = data.get('solicitud_id')
+        beneficios = data.get('beneficios', [])  # Array de {codigo, nombre, monto}
+        total = data.get('total')
+        
+        if not expediente_id or not beneficios or not total:
+            return jsonify({'error': 'Datos incompletos'}), 400
+        
+        cur = conn.cursor()
+        funcionario_id = session.get('user_id')
+        
+        # Verificar si ya existe un cálculo activo (pendiente o aprobado)
+        cur.execute("""
+            SELECT id, estado FROM app.calculo_saldo_insoluto 
+            WHERE expediente_id = %s AND estado IN ('pendiente', 'aprobado')
+            ORDER BY fecha_calculo DESC LIMIT 1
+        """, (expediente_id,))
+        
+        calculo_existente = cur.fetchone()
+        if calculo_existente:
+            return jsonify({
+                'error': f'Ya existe un cálculo {calculo_existente[1]} para este expediente. Solo se puede recalcular si el expediente fue rechazado.'
+            }), 400
+        
+        # Insertar cálculo principal
+        cur.execute("""
+            INSERT INTO app.calculo_saldo_insoluto 
+            (expediente_id, solicitud_id, total_calculado, calculado_por, estado)
+            VALUES (%s, %s, %s, %s, 'pendiente')
+            RETURNING id
+        """, (expediente_id, solicitud_id, total, funcionario_id))
+        
+        calculo_id = cur.fetchone()[0]
+        
+        # Insertar detalles de beneficios
+        for beneficio in beneficios:
+            cur.execute("""
+                INSERT INTO app.detalle_calculo_saldo 
+                (calculo_id, beneficio_codigo, beneficio_nombre, monto)
+                VALUES (%s, %s, %s, %s)
+            """, (calculo_id, beneficio.get('codigo'), beneficio.get('nombre'), beneficio.get('monto')))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cálculo guardado exitosamente',
+            'data': {
+                'calculo_id': calculo_id,
+                'expediente_id': expediente_id,
+                'total': total
+            }
+        }), 201
+        
+    except Exception as e:
+        print(f'❌ Error guardando cálculo: {e}')
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/expediente/<int:expediente_id>/calculo-existente', methods=['GET'])
+@login_required
+def verificar_calculo_existente(expediente_id):
+    """Verificar si existe un cálculo activo para un expediente"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Buscar cálculo activo (pendiente o aprobado)
+        cur.execute("""
+            SELECT id, estado, total_calculado, fecha_calculo 
+            FROM app.calculo_saldo_insoluto 
+            WHERE expediente_id = %s AND estado IN ('pendiente', 'aprobado')
+            ORDER BY fecha_calculo DESC LIMIT 1
+        """, (expediente_id,))
+        
+        calculo = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        if calculo:
+            return jsonify({
+                'existe': True,
+                'calculo': {
+                    'id': calculo['id'],
+                    'estado': calculo['estado'],
+                    'total_calculado': float(calculo['total_calculado']),
+                    'fecha_calculo': calculo['fecha_calculo'].isoformat() if calculo['fecha_calculo'] else None
+                }
+            }), 200
+        else:
+            return jsonify({
+                'existe': False
+            }), 200
+        
+    except Exception as e:
+        print(f'❌ Error verificando cálculo: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
 if __name__ == '__main__':
     if test_connection():
         # Crear tabla de firmas de beneficiarios si no existe
         create_firmas_beneficiarios_table()
+        # Crear tablas de cálculo de saldo insoluto si no existen
+        from utils.database import create_calculo_saldo_insoluto_tables
+        create_calculo_saldo_insoluto_tables()
         
         config = Config()
         print(f'✅ Servidor Flask ejecutándose en puerto {config.PORT}')

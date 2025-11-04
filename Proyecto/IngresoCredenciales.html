@@ -124,8 +124,12 @@
         console.log('📥 Datos respuesta:', resultado);
 
         if (response.ok && resultado.success) {
-          // Login exitoso - redirigir al dashboard
-          window.location.href = "index.html";
+          // Login exitoso - redirigir según rol
+          if (resultado.user.rol === 'jefatura') {
+            window.location.href = "FrontJefatura.html";
+          } else {
+            window.location.href = "index.html";
+          }
         } else {
           msg.textContent = resultado.error || "RUT o contraseña incorrectos";
         }

@@ -148,4 +148,78 @@ def create_firmas_beneficiarios_table():
             conn.close()
         return False
 
+def create_calculo_saldo_insoluto_tables():
+    """Crear tablas para almacenar cálculos de saldo insoluto"""
+    conn = get_db_connection()
+    if not conn:
+        print("❌ No se pudo conectar a la base de datos")
+        return False
+    
+    try:
+        cur = conn.cursor()
+        
+        # Crear tabla calculo_saldo_insoluto
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app.calculo_saldo_insoluto (
+                id SERIAL PRIMARY KEY,
+                expediente_id INTEGER NOT NULL REFERENCES app.expediente(id) ON DELETE CASCADE,
+                solicitud_id INTEGER REFERENCES app.solicitudes(id) ON DELETE SET NULL,
+                total_calculado DECIMAL(15,2) NOT NULL,
+                fecha_calculo TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                calculado_por INTEGER REFERENCES app.funcionarios(id) ON DELETE SET NULL,
+                estado VARCHAR(50) DEFAULT 'pendiente',
+                observaciones TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Crear tabla detalle_calculo_saldo
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app.detalle_calculo_saldo (
+                id SERIAL PRIMARY KEY,
+                calculo_id INTEGER NOT NULL REFERENCES app.calculo_saldo_insoluto(id) ON DELETE CASCADE,
+                beneficio_codigo INTEGER NOT NULL,
+                beneficio_nombre VARCHAR(255) NOT NULL,
+                monto DECIMAL(15,2) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Crear índices para optimizar consultas
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calculo_saldo_expediente 
+            ON app.calculo_saldo_insoluto(expediente_id)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calculo_saldo_solicitud 
+            ON app.calculo_saldo_insoluto(solicitud_id)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calculo_saldo_estado 
+            ON app.calculo_saldo_insoluto(estado)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_detalle_calculo_calculo 
+            ON app.detalle_calculo_saldo(calculo_id)
+        """)
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print('✅ Tablas de cálculo de saldo insoluto creadas exitosamente')
+        print('✅ Índices optimizados creados')
+        return True
+        
+    except Exception as e:
+        print(f'❌ Error creando tablas de cálculo: {e}')
+        if conn:
+            conn.rollback()
+            conn.close()
+        return False
+
 
