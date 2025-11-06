@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Saldos Insolutos - Inicio</title>
+    <title>Sistema de Saldos Insolutos - Jefatura</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -44,6 +44,12 @@
             font-size: 1.1em;
         }
         
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        
         .login-btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -56,11 +62,28 @@
             display: inline-block;
             transition: transform 0.2s, box-shadow 0.2s;
             margin: 10px;
+            width: 80%;
         }
         
         .login-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
         }
         
         .features {
@@ -106,56 +129,77 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        .unauthorized {
+            color: #dc3545;
+            padding: 20px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="logo">🏦</div>
         <h1>Sistema de Saldos Insolutos</h1>
-        <p class="subtitle">Gestión digital de expedientes y firmas</p>
+        <p class="subtitle">Panel de Jefatura</p>
         
         <div class="loading" id="loading">
             <div class="spinner"></div>
             <p>Verificando sesión...</p>
         </div>
         
-        <div id="loginSection">
-            <a href="IngresoCredenciales.html" class="login-btn">
-                🔐 Iniciar Sesión
-            </a>
+        <div id="unauthorizedSection" style="display: none;">
+            <div class="unauthorized">
+                <h2>❌ Acceso No Autorizado</h2>
+                <p>No tienes permisos para acceder a este panel.</p>
+                <p>Solo usuarios con rol de jefatura pueden acceder.</p>
+                <a href="index.html" class="login-btn btn-primary">Volver al Inicio</a>
+            </div>
         </div>
         
         <div id="dashboardSection" style="display: none;">
             <h2>¡Bienvenido, <span id="username"></span>!</h2>
-            <a href="formularioSaldoInsoluto.html" class="login-btn">
-                📋 Crear Expediente
+            <a href="crearUsuario.html" class="login-btn btn-success">
+                👤 Crear Usuario
             </a>
             <br>
-            <a href="RevisionExpediente.html" class="login-btn">
-                📄 Revisar Expediente
-            </a>
+            <button onclick="gestionarUsuarios()" class="login-btn btn-info">
+                📊 Gestionar Usuarios
+            </button>
             <br>
-            <button onclick="logout()" class="login-btn" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);">
+            <button onclick="verReportes()" class="login-btn btn-primary">
+                📈 Ver Reportes
+            </button>
+            <br>
+            <button onclick="analisisExpediente()" class="login-btn btn-primary">
+                ✅ Análisis de Expediente
+            </button>
+            <br>
+            <button onclick="logout()" class="login-btn btn-danger">
                 🚪 Cerrar Sesión
             </button>
         </div>
         
         <div class="features">
             <div class="feature">
+                <span class="feature-icon">👥</span>
+                <span class="feature-text">Gestión de usuarios de plataforma</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">📊</span>
+                <span class="feature-text">Reportes y estadísticas del sistema</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🔐</span>
+                <span class="feature-text">Control de acceso y permisos</span>
+            </div>
+            <div class="feature">
                 <span class="feature-icon">📋</span>
-                <span class="feature-text">Creación de expedientes digitales</span>
+                <span class="feature-text">Supervisión de expedientes</span>
             </div>
             <div class="feature">
-                <span class="feature-icon">✍️</span>
-                <span class="feature-text">Firmas digitales de beneficiarios</span>
-            </div>
-            <div class="feature">
-                <span class="feature-icon">📁</span>
-                <span class="feature-text">Gestión de documentos</span>
-            </div>
-            <div class="feature">
-                <span class="feature-icon">🔍</span>
-                <span class="feature-text">Búsqueda y consulta de expedientes</span>
+                <span class="feature-icon">✅</span>
+                <span class="feature-text">Análisis, aprobación y rechazo de expedientes</span>
             </div>
         </div>
     </div>
@@ -178,34 +222,47 @@
                 if (response.ok) {
                     const data = await response.json();
                     if (data.authenticated) {
-                        // Verificar rol - si es jefatura, redirigir a FrontJefatura
+                        // Verificar que sea jefatura
                         if (data.user.rol === 'jefatura') {
-                            window.location.href = 'FrontJefatura.html';
-                            return;
+                            // Usuario logueado y es jefatura - mostrar dashboard
+                            const nombreCompleto = `${data.user.nombres} ${data.user.apellido_p}`;
+                            document.getElementById('username').textContent = nombreCompleto;
+                            document.getElementById('dashboardSection').style.display = 'block';
+                            document.getElementById('unauthorizedSection').style.display = 'none';
+                        } else {
+                            // Usuario logueado pero no es jefatura
+                            document.getElementById('unauthorizedSection').style.display = 'block';
+                            document.getElementById('dashboardSection').style.display = 'none';
                         }
-                        // Usuario logueado - mostrar dashboard
-                        const nombreCompleto = `${data.user.nombres} ${data.user.apellido_p}`;
-                        document.getElementById('username').textContent = nombreCompleto;
-                        document.getElementById('loginSection').style.display = 'none';
-                        document.getElementById('dashboardSection').style.display = 'block';
                     } else {
-                        // Usuario no logueado - mostrar login
-                        document.getElementById('loginSection').style.display = 'block';
-                        document.getElementById('dashboardSection').style.display = 'none';
+                        // Usuario no logueado - redirigir a login
+                        window.location.href = 'IngresoCredenciales.html';
                     }
                 } else {
-                    // Error - mostrar login
-                    document.getElementById('loginSection').style.display = 'block';
-                    document.getElementById('dashboardSection').style.display = 'none';
+                    // Error - redirigir a login
+                    window.location.href = 'IngresoCredenciales.html';
                 }
             } catch (error) {
                 console.error('Error verificando sesión:', error);
-                // Error - mostrar login
-                document.getElementById('loginSection').style.display = 'block';
-                document.getElementById('dashboardSection').style.display = 'none';
+                window.location.href = 'IngresoCredenciales.html';
             } finally {
                 document.getElementById('loading').style.display = 'none';
             }
+        }
+        
+        function gestionarUsuarios() {
+            // TODO: Implementar página de gestión de usuarios
+            alert('Funcionalidad de gestión de usuarios próximamente');
+        }
+        
+        function verReportes() {
+            // TODO: Implementar página de reportes
+            alert('Funcionalidad de reportes próximamente');
+        }
+        
+        function analisisExpediente() {
+            // TODO: Implementar página de análisis de expediente
+            alert('Funcionalidad de análisis de expediente próximamente');
         }
         
         async function logout() {
