@@ -222,4 +222,214 @@ def create_calculo_saldo_insoluto_tables():
             conn.close()
         return False
 
+def add_firma_funcionario_columns():
+    """Agregar columnas de firma de funcionario a la tabla solicitudes"""
+    conn = get_db_connection()
+    if not conn:
+        print("❌ No se pudo conectar a la base de datos")
+        return False
+    
+    try:
+        cur = conn.cursor()
+        
+        # Agregar columna firmado_funcionario
+        cur.execute("""
+            ALTER TABLE app.solicitudes 
+            ADD COLUMN IF NOT EXISTS firmado_funcionario BOOLEAN DEFAULT FALSE
+        """)
+        
+        # Agregar columna fecha_firma_funcionario
+        cur.execute("""
+            ALTER TABLE app.solicitudes 
+            ADD COLUMN IF NOT EXISTS fecha_firma_funcionario TIMESTAMP
+        """)
+        
+        # Agregar columna funcionario_id_firma con referencia a funcionarios
+        cur.execute("""
+            ALTER TABLE app.solicitudes 
+            ADD COLUMN IF NOT EXISTS funcionario_id_firma INTEGER REFERENCES app.funcionarios(id) ON DELETE SET NULL
+        """)
+        
+        # Crear índice para optimizar consultas de firmas
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_solicitudes_firmado_funcionario 
+            ON app.solicitudes(firmado_funcionario)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_solicitudes_funcionario_firma 
+            ON app.solicitudes(funcionario_id_firma)
+        """)
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print('✅ Columnas de firma de funcionario agregadas a app.solicitudes')
+        print('✅ Índices optimizados creados')
+        return True
+        
+    except Exception as e:
+        print(f'❌ Error agregando columnas de firma: {e}')
+        if conn:
+            conn.rollback()
+            conn.close()
+        return False
+
+def fix_rut_columns():
+    """Aumentar el tamaño de las columnas de RUT de VARCHAR(12) a VARCHAR(20)"""
+    conn = get_db_connection()
+    if not conn:
+        print("❌ No se pudo conectar a la base de datos")
+        return False
+    
+    try:
+        cur = conn.cursor()
+        
+        # Lista de tablas y columnas que pueden tener RUT con tamaño insuficiente
+        alter_statements = [
+            # Tabla causante
+            "ALTER TABLE app.causante ALTER COLUMN fal_run TYPE VARCHAR(20)",
+            # Tabla representante
+            "ALTER TABLE app.representante ALTER COLUMN rep_rut TYPE VARCHAR(20)",
+            # Tabla solicitudes (campos que almacenan RUTs)
+            "ALTER TABLE app.solicitudes ALTER COLUMN representante_rut TYPE VARCHAR(20)",
+            "ALTER TABLE app.solicitudes ALTER COLUMN causante_rut TYPE VARCHAR(20)",
+            # Tabla beneficiarios
+            "ALTER TABLE app.beneficiarios ALTER COLUMN ben_run TYPE VARCHAR(20)",
+        ]
+        
+        for statement in alter_statements:
+            try:
+                cur.execute(statement)
+                print(f'✅ Columnas de RUT actualizadas: {statement.split("COLUMN")[1].strip()}')
+            except Exception as e:
+                # Si la columna ya tiene el tamaño correcto o no existe, continuar
+                error_msg = str(e)
+                if 'does not exist' not in error_msg.lower() and 'already' not in error_msg.lower():
+                    print(f'⚠️  {statement.split("COLUMN")[1].strip()}: {error_msg}')
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print('✅ Columnas de RUT actualizadas exitosamente')
+        return True
+        
+    except Exception as e:
+        print(f'❌ Error actualizando columnas de RUT: {e}')
+        if conn:
+            conn.rollback()
+            conn.close()
+        return False
+
+def remove_unused_firma_columns():
+    """Eliminar columnas fecha_firma_funcionario y funcionario_id_firma de app.solicitudes"""
+    conn = get_db_connection()
+    if not conn:
+        print("❌ No se pudo conectar a la base de datos")
+        return False
+    
+    try:
+        cur = conn.cursor()
+        
+        # Eliminar columna fecha_firma_funcionario si existe
+        try:
+            cur.execute("ALTER TABLE app.solicitudes DROP COLUMN IF EXISTS fecha_firma_funcionario")
+            print('✅ Columna fecha_firma_funcionario eliminada')
+        except Exception as e:
+            print(f'⚠️ Error eliminando fecha_firma_funcionario: {e}')
+        
+        # Eliminar columna funcionario_id_firma si existe
+        try:
+            cur.execute("ALTER TABLE app.solicitudes DROP COLUMN IF EXISTS funcionario_id_firma")
+            print('✅ Columna funcionario_id_firma eliminada')
+        except Exception as e:
+            print(f'⚠️ Error eliminando funcionario_id_firma: {e}')
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print('✅ Columnas innecesarias eliminadas exitosamente')
+        return True
+        
+    except Exception as e:
+        print(f'❌ Error eliminando columnas: {e}')
+        if conn:
+            conn.rollback()
+            conn.close()
+        return False
+
+def create_aprobacion_items_table():
+    """Crear tabla para almacenar aprobaciones/rechazos de items individuales por jefatura"""
+    conn = get_db_connection()
+    if not conn:
+        print("❌ No se pudo conectar a la base de datos")
+        return False
+    
+    try:
+        cur = conn.cursor()
+        
+        # Crear tabla aprobacion_items
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app.aprobacion_items (
+                id SERIAL PRIMARY KEY,
+                expediente_id INTEGER NOT NULL REFERENCES app.expediente(id) ON DELETE CASCADE,
+                solicitud_id INTEGER NOT NULL REFERENCES app.solicitudes(id) ON DELETE CASCADE,
+                item_tipo VARCHAR(50) NOT NULL,
+                item_id INTEGER,
+                estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+                observacion TEXT,
+                aprobado_por INTEGER REFERENCES app.funcionarios(id) ON DELETE SET NULL,
+                fecha_aprobacion TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT chk_estado CHECK (estado IN ('pendiente', 'aprobado', 'rechazado')),
+                CONSTRAINT chk_item_tipo CHECK (item_tipo IN ('causante', 'beneficiarios', 'firmas', 'calculo', 'documentos', 'general'))
+            )
+        """)
+        
+        # Crear índices para optimizar consultas
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_aprobacion_items_expediente 
+            ON app.aprobacion_items(expediente_id)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_aprobacion_items_solicitud 
+            ON app.aprobacion_items(solicitud_id)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_aprobacion_items_tipo 
+            ON app.aprobacion_items(item_tipo)
+        """)
+        
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_aprobacion_items_estado 
+            ON app.aprobacion_items(estado)
+        """)
+        
+        # Índice único para evitar duplicados (un item solo puede tener un registro activo)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_aprobacion_items_unique 
+            ON app.aprobacion_items(expediente_id, solicitud_id, item_tipo)
+        """)
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print('✅ Tabla aprobacion_items creada exitosamente')
+        print('✅ Índices optimizados creados')
+        return True
+        
+    except Exception as e:
+        print(f'❌ Error creando tabla aprobacion_items: {e}')
+        if conn:
+            conn.rollback()
+            conn.close()
+        return False
+
 

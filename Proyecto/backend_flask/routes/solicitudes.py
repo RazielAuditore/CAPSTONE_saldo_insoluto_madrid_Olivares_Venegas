@@ -238,13 +238,54 @@ def register_routes(app):
             
             expediente_id = solicitud[1]
             
+            # Obtener funcionario_id de la firma_data o de la sesión
+            funcionario_id_firma = firma_data.get('funcionario_id') or session.get('user_id')
+            
+            if not funcionario_id_firma:
+                return jsonify({'error': 'No se pudo identificar al funcionario'}), 400
+            
+            # Verificar que el funcionario existe en la tabla funcionarios
+            cur.execute("""
+                SELECT id FROM app.funcionarios 
+                WHERE id = %s AND activo = true
+            """, (funcionario_id_firma,))
+            
+            funcionario = cur.fetchone()
+            if not funcionario:
+                return jsonify({'error': 'Funcionario no encontrado o inactivo'}), 404
+            
+            # Actualizar solicitudes con la información de firma del funcionario
+            cur.execute("""
+                UPDATE app.solicitudes 
+                SET firmado_funcionario = TRUE,
+                    fecha_firma_funcionario = NOW(),
+                    funcionario_id_firma = %s,
+                    estado = 'firmado_funcionario'
+                WHERE id = %s
+            """, (funcionario_id_firma, solicitud_id))
+            
+            # Verificar que el UPDATE de solicitud funcionó
+            if cur.rowcount == 0:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'No se pudo actualizar el estado de la solicitud'}), 404
+            
+            # Actualizar validación con la firma del funcionario (mantener por compatibilidad)
             cur.execute("""
                 UPDATE app.validacion 
-                SET val_firma_funcionario = %s, val_estado = 'firmado_funcionario', val_fecha_firma_funcionario = NOW()
+                SET val_firma_funcionario = %s, 
+                    val_estado = 'firmado_funcionario', 
+                    updated_at = NOW()
                 WHERE solicitud_id = %s
             """, (json.dumps(firma_data), solicitud_id))
             
-            cur.execute("UPDATE app.solicitudes SET estado = 'firmado_funcionario' WHERE id = %s", (solicitud_id,))
+            # Verificar que el UPDATE de validación funcionó
+            if cur.rowcount == 0:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'No se encontró registro de validación para esta solicitud'}), 404
             
             conn.commit()
             cur.close()

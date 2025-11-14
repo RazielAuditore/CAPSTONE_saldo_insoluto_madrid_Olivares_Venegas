@@ -31,6 +31,13 @@
       padding: 20px;
       border-bottom: 1px solid #e5e7eb;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .header-content {
+      flex: 1;
     }
     
     .header h1 {
@@ -42,6 +49,15 @@
     .header p {
       margin: 5px 0 0 0;
       color: var(--muted);
+    }
+    
+    .header-actions {
+      display: flex;
+      gap: 10px;
+    }
+    
+    .header-actions .btn {
+      text-decoration: none;
     }
     
     .container {
@@ -65,7 +81,7 @@
     
     .filter-row {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr auto;
+      grid-template-columns: 1fr 1fr auto;
       gap: 15px;
       align-items: end;
     }
@@ -244,6 +260,19 @@
       background-color: rgba(0,0,0,0.5);
     }
     
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      z-index: 10000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.7);
+      justify-content: center;
+      align-items: center;
+    }
+    
     .modal-content {
       background-color: white;
       margin: 5% auto;
@@ -355,8 +384,13 @@
 </head>
 <body>
   <div class="header">
-    <h1>📋 Aprobación de Solicitudes</h1>
-    <p>Revisa y aprueba las solicitudes de saldo insoluto pendientes de jefatura</p>
+    <div class="header-content">
+      <h1>📋 Aprobación de Solicitudes</h1>
+      <p>Revisa y aprueba las solicitudes de saldo insoluto pendientes de jefatura</p>
+    </div>
+    <div class="header-actions">
+      <a href="FrontJefatura.html" class="btn btn-secondary">🏠 Volver a Jefatura</a>
+    </div>
   </div>
 
   <div class="container">
@@ -365,16 +399,11 @@
       <h3>🔍 Filtros de Búsqueda</h3>
       <div class="filter-row">
         <div class="filter-group">
-          <label for="filtro-rut">RUT causante (opcional)</label>
-          <input id="filtro-rut" type="text" placeholder="12.345.678-9 (opcional)">
-        </div>
-        <div class="filter-group">
           <label for="filtro-estado">Estado</label>
           <select id="filtro-estado">
             <option value="">Todos los estados</option>
-            <option value="borrador">Borrador</option>
-            <option value="firmado_funcionario">Firmado por Funcionario</option>
-            <option value="completado">Completado</option>
+            <option value="pendiente">Pendientes (En revisión)</option>
+            <option value="completado">Aprobadas (Completadas)</option>
           </select>
         </div>
         <div class="filter-group">
@@ -425,15 +454,78 @@
     </div>
   </div>
 
+  <!-- Modal para Visualizar Documentos -->
+  <div id="modal-documento" class="modal-overlay" onclick="cerrarModalDocumento(event)" style="display: none;">
+    <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 95%; max-height: 95vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 id="modal-documento-titulo" style="margin: 0;">📄 Visualizar Documento</h2>
+        <span class="close" onclick="cerrarModalDocumento()" style="cursor: pointer; font-size: 28px; color: #aaa;">&times;</span>
+      </div>
+      <div class="modal-body" style="padding: 0; flex: 1; overflow: hidden;">
+        <iframe id="documento-iframe" 
+                style="width: 100%; height: 100%; border: none; border-radius: 0;"
+                frameborder="0">
+        </iframe>
+      </div>
+      <div style="padding: 15px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn btn-secondary" onclick="cerrarModalDocumento()">Cerrar</button>
+        <a id="descargar-documento-link" href="#" target="_blank" class="btn btn-primary">📥 Descargar</a>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Variables globales
     let solicitudesData = [];
     let solicitudActual = null;
 
-  // Cargar solicitudes al iniciar
-    document.addEventListener('DOMContentLoaded', function() {
-      cargarSolicitudes();
+    // Verificar sesión y rol de jefatura al iniciar
+    document.addEventListener('DOMContentLoaded', async function() {
+      // Verificar que el usuario sea jefatura antes de mostrar el contenido
+      const tieneAcceso = await verificarAccesoJefatura();
+      if (tieneAcceso) {
+        cargarSolicitudes();
+      } else {
+        // Ocultar contenido y mostrar mensaje de no autorizado
+        document.body.innerHTML = `
+          <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div style="background: white; padding: 40px; border-radius: 15px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1); text-align: center; max-width: 500px;">
+              <h1 style="color: #dc3545; margin-bottom: 20px;">❌ Acceso No Autorizado</h1>
+              <p style="color: #666; margin-bottom: 30px;">Esta página solo está disponible para usuarios con rol de jefatura.</p>
+              <a href="FrontJefatura.html" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; border-radius: 8px; text-decoration: none; display: inline-block; margin-right: 10px;">Volver a Jefatura</a>
+              <a href="index.html" style="background: #6c757d; color: white; padding: 15px 30px; border-radius: 8px; text-decoration: none; display: inline-block;">Ir al Inicio</a>
+            </div>
+          </div>
+        `;
+      }
     });
+
+    // Función para verificar acceso de jefatura
+    async function verificarAccesoJefatura() {
+      try {
+        const response = await fetch('http://localhost:3001/api/check-session', {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.authenticated && data.user.rol === 'jefatura') {
+            return true;
+          } else {
+            // Si no está autenticado o no es jefatura
+            return false;
+          }
+        } else {
+          return false;
+        }
+      } catch (error) {
+        console.error('Error verificando acceso:', error);
+        return false;
+      }
+    }
+
+  // Cargar solicitudes al iniciar
 
     // Utilidad: formateo de RUT básico
     function limpiarRut(r){ return (r||'').replace(/\./g,'').replace(/-/g,'').toUpperCase(); }
@@ -475,9 +567,9 @@
             solicitudesData = [];
           }
         } else {
-          // Sin RUT: listar pendientes de jefatura
+          // Listar solicitudes de jefatura
           const qs = new URLSearchParams();
-          const filtroEstado = document.getElementById('filtro-estado').value || 'firmado_funcionario';
+          const filtroEstado = document.getElementById('filtro-estado').value || '';
           const filtroSucursal = document.getElementById('filtro-sucursal').value || '';
           if (filtroEstado) qs.append('estado', filtroEstado);
           if (filtroSucursal) qs.append('sucursal', filtroSucursal);
@@ -495,26 +587,62 @@
 
           const data = await resp.json();
           if (data.success && Array.isArray(data.data)) {
-            solicitudesData = data.data.map(x => ({
-              id: x.expediente_id,
-              folio: x.folio,
-              estado: x.estado_solicitud,
-              fecha_creacion: x.fecha_creacion,
-              sucursal: x.sucursal || 'No especificada',
-              funcionario: { nombre_completo: '', iniciales: '' },
-              causante: {
-                nombre_completo: x.causante?.nombre_completo || '',
-                rut: x.causante?.rut || '',
-                fecha_defuncion: x.causante?.fecha_defuncion || ''
-              },
-              representante: { nombre_completo: 'No especificado', rut: 'No especificado', calidad: 'No especificada' },
-              firmas: {
-                total_firmas: x.firmas?.total_beneficiarios || 0,
-                firmas_completadas: x.firmas?.beneficiarios_firmados || 0,
-                pendientes: x.firmas?.pendientes || 0
-              },
-              documentos: { total: 0, lista: [] },
-              beneficiarios: []
+            // Cargar cálculos para cada solicitud
+            solicitudesData = await Promise.all(data.data.map(async (x) => {
+              let tiene_calculo = false;
+              let estado_calculo = null;
+              try {
+                const calcResp = await fetch(`http://localhost:3001/api/expediente/${x.expediente_id}/calculo-existente`, {
+                  method: 'GET',
+                  credentials: 'include'
+                });
+                if (calcResp.ok) {
+                  const calcJson = await calcResp.json();
+                  tiene_calculo = calcJson.existe || false;
+                  estado_calculo = calcJson.calculo?.estado || null;
+                }
+              } catch (error) {
+                console.warn('Error verificando cálculo:', error);
+              }
+              
+              return {
+                id: x.expediente_id,
+                solicitud_id: x.solicitud_id || x.expediente_id, // Usar solicitud_id si existe
+                folio: x.folio,
+                estado: x.estado_solicitud,
+                firmado_funcionario: x.firmado_funcionario || false,
+                fecha_creacion: x.fecha_creacion,
+                sucursal: x.sucursal || 'No especificada',
+                tiene_calculo: tiene_calculo,
+                estado_calculo: estado_calculo,
+                funcionario: { nombre_completo: '', iniciales: '' },
+                causante: {
+                  nombre_completo: x.causante?.nombre_completo || '',
+                  rut: x.causante?.rut || '',
+                  fecha_defuncion: x.causante?.fecha_defuncion || ''
+                },
+                representante: {
+                  nombre_completo: x.representante?.nombre_completo || 'No especificado',
+                  rut: x.representante?.rut || 'No especificado',
+                  calidad: x.representante?.calidad || 'No especificada',
+                  firmado: x.representante?.firmado || false
+                },
+                firmas: {
+                  total_firmas: x.firmas?.total_beneficiarios || 0,
+                  firmas_completadas: x.firmas?.beneficiarios_firmados || 0,
+                  pendientes: x.firmas?.pendientes || 0
+                },
+                documentos: {
+                  total: x.documentos?.total || 0,
+                  lista: x.documentos?.lista || []
+                },
+                beneficiarios: (x.beneficiarios || []).map(b => ({
+                  nombre: b.nombre_completo || 'Sin nombre',
+                  rut: b.rut || '',
+                  parentesco: b.parentesco || 'No especificado',
+                  firmado: b.firma?.firmado === true
+                }))
+              };
             }));
           } else {
             solicitudesData = [];
@@ -528,6 +656,7 @@
         const filtroSucursal = document.getElementById('filtro-sucursal').value;
         
         if (filtroEstado) {
+          // Filtrar por estado exacto (pendiente o completado)
           solicitudesFiltradas = solicitudesFiltradas.filter(s => s.estado === filtroEstado);
         }
         
@@ -553,7 +682,12 @@
     // Mapear el resultado del backend (estructura /api/revision-expediente) a la UI de esta página
     function mapResultadoAUI(r){
       // r es data.resultado del backend
-      const documentosLista = (r.documentos?.lista || []).map(d => ({ nombre: d.nombre, tipo: `Tipo ${d.tipo_id||''}` }));
+      const documentosLista = (r.documentos?.lista || []).map(d => ({ 
+        id: d.id, 
+        nombre: d.nombre, 
+        tipo: `Tipo ${d.tipo_id||''}`,
+        mime_type: d.mime_type || 'application/pdf'
+      }));
       const beneficiarios = (r.beneficiarios || []).map(b => ({
         nombre: b.nombre_completo,
         rut: b.rut,
@@ -563,8 +697,10 @@
 
       return {
         id: r.expediente_id,
+        solicitud_id: r.solicitud_id || r.solicitud?.id || r.expediente_id,
         folio: r.folio,
         estado: r.solicitud?.estado || r.estado_expediente || 'borrador',
+        firmado_funcionario: r.solicitud?.firmado_funcionario || false,
         fecha_creacion: r.fecha_creacion,
         sucursal: r.solicitud?.sucursal || 'No especificada',
         funcionario: {
@@ -634,6 +770,7 @@
               <p>Beneficiarios: ${solicitud.beneficiarios.length}</p>
               <p>Firmas: ${solicitud.firmas.firmas_completadas}/${solicitud.firmas.total_firmas}</p>
               <p>Documentos: ${solicitud.documentos.total}</p>
+              <p>💰 Cálculo: ${solicitud.tiene_calculo ? (solicitud.estado_calculo === 'aprobado' ? '✅ Aprobado' : '⏳ Pendiente') : '⏳ Pendiente'}</p>
             </div>
           </div>
           
@@ -641,21 +778,23 @@
             <button class="btn btn-info" onclick="verDetalles(${solicitud.id})">
               👁️ Ver Detalles
             </button>
-            ${solicitud.estado === 'firmado_funcionario' ? `
-              <button class="btn btn-success" onclick="aprobarSolicitud(${solicitud.id})">
+            ${solicitud.firmado_funcionario === true && solicitud.estado !== 'completado' ? `
+              <button class="btn btn-success" onclick="aprobarSolicitud(${solicitud.solicitud_id})">
                 ✅ Aprobar
               </button>
             ` : ''}
-            <button class="btn btn-warning" onclick="rechazarSolicitud(${solicitud.id})">
-              ❌ Rechazar
-            </button>
+            ${solicitud.estado !== 'completado' ? `
+              <button class="btn btn-warning" onclick="rechazarSolicitud(${solicitud.solicitud_id})">
+                ❌ Rechazar
+              </button>
+            ` : ''}
           </div>
         </div>
       `).join('');
     }
 
     // Función para ver detalles de una solicitud
-    function verDetalles(solicitudId) {
+    async function verDetalles(solicitudId) {
       solicitudActual = solicitudesData.find(s => s.id === solicitudId);
       
       if (!solicitudActual) return;
@@ -667,21 +806,134 @@
 
       titulo.textContent = `Detalles: ${solicitudActual.folio}`;
 
+      // Cargar cálculo del saldo insoluto
+      let calculoData = null;
+      try {
+        const calculoResp = await fetch(`http://localhost:3001/api/expediente/${solicitudActual.id}/calculo-completo`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        if (calculoResp.ok) {
+          const calculoJson = await calculoResp.json();
+          if (calculoJson.existe) {
+            calculoData = calculoJson.calculo;
+          }
+        }
+      } catch (error) {
+        console.warn('Error cargando cálculo:', error);
+      }
+
+      // Cargar estado de aprobación de items
+      let aprobacionItems = {};
+      try {
+        const aprobResp = await fetch(`http://localhost:3001/api/solicitudes/${solicitudActual.solicitud_id}/aprobacion-items`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        if (aprobResp.ok) {
+          const aprobJson = await aprobResp.json();
+          if (aprobJson.success) {
+            aprobacionItems = aprobJson.data || {};
+          }
+        }
+      } catch (error) {
+        console.warn('Error cargando aprobaciones:', error);
+      }
+
       // Verificar requisitos
       const requisitos = verificarRequisitos(solicitudActual);
+
+      // Formatear monto en pesos chilenos
+      const formatearMonto = (monto) => {
+        return new Intl.NumberFormat('es-CL', {
+          style: 'currency',
+          currency: 'CLP',
+          minimumFractionDigits: 0
+        }).format(monto);
+      };
 
       body.innerHTML = `
         <div class="requisitos-section">
           <h4>📋 Verificación de Requisitos</h4>
-          ${requisitos.map(req => `
+            ${requisitos.map(req => `
             <div class="requisito-item ${req.cumple ? 'cumple' : 'no-cumple'}">
               <span class="requisito-icon">${req.cumple ? '✅' : '❌'}</span>
-              <span class="requisito-text">${req.descripcion}</span>
+              <span class="requisito-text">${req.descripcion}: ${req.texto || (req.cumple ? '✅ Cumple' : '❌ No cumple')}</span>
             </div>
           `).join('')}
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        ${calculoData ? `
+        <div style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
+          <h4 style="margin: 0 0 15px 0; color: white;">💰 Cálculo de Saldo Insoluto</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <div>
+              <p style="margin: 5px 0; font-size: 14px; opacity: 0.9;">Total Calculado:</p>
+              <p style="margin: 0; font-size: 24px; font-weight: bold;">${formatearMonto(calculoData.total_calculado)}</p>
+            </div>
+            <div>
+              <p style="margin: 5px 0; font-size: 14px; opacity: 0.9;">Estado:</p>
+              <p style="margin: 0; font-size: 16px;">
+                <span style="padding: 4px 12px; background: ${calculoData.estado === 'aprobado' ? '#28a745' : '#ffc107'}; border-radius: 20px; font-size: 14px;">
+                  ${calculoData.estado === 'aprobado' ? '✅ Aprobado' : '⏳ Pendiente'}
+                </span>
+              </p>
+            </div>
+          </div>
+          <div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px; margin-top: 10px;">
+            <p style="margin: 5px 0; font-size: 13px; opacity: 0.9;">
+              📅 Fecha: ${formatearFecha(calculoData.fecha_calculo)} | 
+              👤 Calculado por: ${calculoData.funcionario_nombre || 'N/A'}
+            </p>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 12px; border-left: 4px solid #667eea;">
+          <h4 style="margin: 0 0 15px 0;">📊 Detalle de Beneficios</h4>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden;">
+              <thead>
+                <tr style="background: #667eea; color: white;">
+                  <th style="padding: 12px; text-align: left; font-size: 14px;">Código</th>
+                  <th style="padding: 12px; text-align: left; font-size: 14px;">Beneficio</th>
+                  <th style="padding: 12px; text-align: right; font-size: 14px;">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${calculoData.beneficios.map((ben, idx) => `
+                  <tr style="border-bottom: 1px solid #e9ecef; ${idx % 2 === 0 ? 'background: #f8f9fa;' : 'background: white;'}">
+                    <td style="padding: 10px 12px; font-size: 14px; font-weight: 600;">${ben.codigo}</td>
+                    <td style="padding: 10px 12px; font-size: 14px;">${ben.nombre}</td>
+                    <td style="padding: 10px 12px; font-size: 14px; text-align: right; font-weight: 600; color: #28a745;">${formatearMonto(ben.monto)}</td>
+                  </tr>
+                `).join('')}
+                <tr style="background: #e9ecef; font-weight: bold;">
+                  <td colspan="2" style="padding: 12px; text-align: right; font-size: 16px;">TOTAL:</td>
+                  <td style="padding: 12px; text-align: right; font-size: 18px; color: #667eea;">${formatearMonto(calculoData.total_calculado)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        ` : `
+        <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+          <p style="margin: 0; color: #856404;">
+            ⚠️ <strong>No se ha calculado el saldo insoluto</strong> para este expediente.
+          </p>
+        </div>
+        `}
+
+        <div style="margin-top: 30px; padding: 20px; background: #f0f4ff; border-radius: 12px; border: 2px solid #667eea;">
+          <h4 style="margin: 0 0 20px 0; color: #333;">✅ Aprobación por Items - Jefatura</h4>
+          
+          ${crearItemAprobacion('causante', '👤 Causante', aprobacionItems.causante, solicitudActual.solicitud_id)}
+          ${crearItemAprobacion('beneficiarios', '👥 Beneficiarios', aprobacionItems.beneficiarios, solicitudActual.solicitud_id)}
+          ${crearItemAprobacion('firmas', '✍️ Firmas', aprobacionItems.firmas, solicitudActual.solicitud_id)}
+          ${crearItemAprobacion('calculo', '💰 Cálculo de Saldo Insoluto', aprobacionItems.calculo, solicitudActual.solicitud_id)}
+          ${crearItemAprobacion('documentos', '📁 Documentos', aprobacionItems.documentos, solicitudActual.solicitud_id)}
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
           <div>
             <h4>👤 Datos del Causante</h4>
             <p><strong>Nombre:</strong> ${solicitudActual.causante.nombre_completo}</p>
@@ -713,9 +965,12 @@
           <h4>📁 Documentos</h4>
           <div style="display: grid; gap: 10px;">
             ${solicitudActual.documentos.lista.map(doc => `
-              <div style="padding: 10px; background: #f8f9fa; border-radius: 6px;">
+              <div style="padding: 10px; background: #f8f9fa; border-radius: 6px; cursor: pointer; transition: all 0.2s;" 
+                   onclick="abrirModalDocumento(${doc.id}, '${doc.nombre.replace(/'/g, "\\'")}')"
+                   onmouseover="this.style.background='#e9ecef'; this.style.transform='translateY(-2px)'"
+                   onmouseout="this.style.background='#f8f9fa'; this.style.transform='translateY(0)'">
                 <strong>${doc.tipo}</strong><br>
-                <small>${doc.nombre}</small>
+                <small style="color: #0d6efd; text-decoration: underline;">👁️ ${doc.nombre}</small>
               </div>
             `).join('')}
           </div>
@@ -727,12 +982,16 @@
       
       actions.innerHTML = `
         <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
-        ${puedeAprobar ? `
-          <button class="btn btn-success" onclick="aprobarSolicitud(${solicitudActual.id})">
+        ${solicitudActual.estado === 'completado' ? `
+          <span style="padding: 8px 16px; background: #28a745; color: white; border-radius: 8px; font-weight: bold;">
+            ✅ Solicitud Aprobada
+          </span>
+        ` : puedeAprobar ? `
+          <button class="btn btn-success" onclick="aprobarSolicitud(${solicitudActual.solicitud_id})">
             ✅ Aprobar Solicitud
           </button>
         ` : `
-          <button class="btn btn-warning" onclick="rechazarSolicitud(${solicitudActual.id})">
+          <button class="btn btn-warning" onclick="rechazarSolicitud(${solicitudActual.solicitud_id})">
             ❌ Rechazar (Faltan requisitos)
           </button>
         `}
@@ -741,12 +1000,154 @@
       modal.style.display = 'block';
     }
 
+    // Función helper para crear item de aprobación con checkbox y campo de observación
+    function crearItemAprobacion(itemTipo, titulo, estadoItem, solicitudId) {
+      const estado = estadoItem?.estado || 'pendiente';
+      const observacion = estadoItem?.observacion || '';
+      const fechaAprobacion = estadoItem?.fecha_aprobacion || '';
+      const aprobadoPor = estadoItem?.aprobado_por || '';
+      
+      const estadoColor = estado === 'aprobado' ? '#28a745' : estado === 'rechazado' ? '#dc3545' : '#6c757d';
+      const estadoIcono = estado === 'aprobado' ? '✅' : estado === 'rechazado' ? '❌' : '⏳';
+      const estadoTexto = estado === 'aprobado' ? 'Aprobado' : estado === 'rechazado' ? 'Rechazado' : 'Pendiente';
+      
+      return `
+        <div style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid ${estadoColor};">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <h5 style="margin: 0; font-size: 16px;">${titulo}</h5>
+              <span style="padding: 4px 10px; background: ${estadoColor}; color: white; border-radius: 12px; font-size: 12px;">
+                ${estadoIcono} ${estadoTexto}
+              </span>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="check_${itemTipo}_${solicitudId}" 
+                  ${estado === 'aprobado' ? 'checked' : ''} 
+                  ${estado === 'aprobado' ? '' : `onchange="if(this.checked) toggleItemAprobacion('${itemTipo}', ${solicitudId}, true)"`}
+                  style="width: 18px; height: 18px; cursor: pointer;"
+                  ${estado === 'aprobado' ? 'disabled' : ''}>
+                <span style="font-size: 14px;">Aprobar</span>
+              </label>
+              <button onclick="toggleItemAprobacion('${itemTipo}', ${solicitudId}, false)" 
+                style="padding: 5px 12px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                Rechazar
+              </button>
+            </div>
+          </div>
+          
+          ${estado === 'rechazado' || observacion ? `
+            <div style="margin-top: 10px;">
+              <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Observación:</label>
+              <textarea id="obs_${itemTipo}_${solicitudId}" 
+                placeholder="Ingrese la razón del rechazo..." 
+                style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: inherit;"
+                ${estado === 'rechazado' ? 'required' : ''}>${observacion}</textarea>
+              ${estado === 'rechazado' ? `
+                <button onclick="guardarRechazo('${itemTipo}', ${solicitudId})" 
+                  style="margin-top: 8px; padding: 6px 15px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                  Guardar Rechazo
+                </button>
+              ` : ''}
+            </div>
+          ` : `
+            <div id="obs_container_${itemTipo}_${solicitudId}" style="display: none; margin-top: 10px;">
+              <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Observación (obligatoria):</label>
+              <textarea id="obs_${itemTipo}_${solicitudId}" 
+                placeholder="Ingrese la razón del rechazo..." 
+                style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: inherit;"
+                required></textarea>
+              <button onclick="guardarRechazo('${itemTipo}', ${solicitudId})" 
+                style="margin-top: 8px; padding: 6px 15px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">
+                Guardar Rechazo
+              </button>
+            </div>
+          `}
+          
+          ${fechaAprobacion ? `
+            <div style="margin-top: 8px; font-size: 12px; color: #6c757d;">
+              📅 ${formatearFecha(fechaAprobacion)} ${aprobadoPor ? `| 👤 ${aprobadoPor}` : ''}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // Función para toggle de aprobación/rechazo de item
+    async function toggleItemAprobacion(itemTipo, solicitudId, aprobar) {
+      if (aprobar) {
+        // Aprobar item
+        try {
+          const response = await fetch(`http://localhost:3001/api/solicitudes/${solicitudId}/aprobacion-items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              item_tipo: itemTipo,
+              estado: 'aprobado',
+              observacion: ''
+            })
+          });
+          
+          if (response.ok) {
+            alert(`✅ Item ${itemTipo} aprobado exitosamente`);
+            verDetalles(solicitudActual.id); // Recargar modal
+          } else {
+            const error = await response.json();
+            alert(`❌ Error: ${error.error || 'Error al aprobar item'}`);
+          }
+        } catch (error) {
+          alert(`❌ Error: ${error.message}`);
+        }
+      } else {
+        // Mostrar campo de observación para rechazo
+        const obsContainer = document.getElementById(`obs_container_${itemTipo}_${solicitudId}`);
+        if (obsContainer) {
+          obsContainer.style.display = 'block';
+        }
+      }
+    }
+
+    // Función para guardar rechazo con observación
+    async function guardarRechazo(itemTipo, solicitudId) {
+      const observacion = document.getElementById(`obs_${itemTipo}_${solicitudId}`).value.trim();
+      
+      if (!observacion) {
+        alert('⚠️ La observación es obligatoria al rechazar un item');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`http://localhost:3001/api/solicitudes/${solicitudId}/aprobacion-items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            item_tipo: itemTipo,
+            estado: 'rechazado',
+            observacion: observacion
+          })
+        });
+        
+        if (response.ok) {
+          alert(`❌ Item ${itemTipo} rechazado exitosamente`);
+          verDetalles(solicitudActual.id); // Recargar modal
+        } else {
+          const error = await response.json();
+          alert(`❌ Error: ${error.error || 'Error al rechazar item'}`);
+        }
+      } catch (error) {
+        alert(`❌ Error: ${error.message}`);
+      }
+    }
+
     // Función para verificar requisitos de una solicitud
     function verificarRequisitos(solicitud) {
       return [
         {
           descripcion: 'Solicitud firmada por funcionario',
-          cumple: solicitud.estado === 'firmado_funcionario' || solicitud.estado === 'completado'
+          cumple: solicitud.firmado_funcionario === true,
+          texto: solicitud.firmado_funcionario === true ? '✅ Firmado' : '❌ No firmado'
         },
         {
           descripcion: 'Todos los beneficiarios han firmado',
@@ -769,32 +1170,31 @@
 
     // Función para aprobar una solicitud
     async function aprobarSolicitud(solicitudId) {
-      if (!confirm('¿Estás seguro de que deseas aprobar esta solicitud?')) {
+      if (!confirm('¿Estás seguro de que deseas aprobar esta solicitud?\n\nSe verificará que todos los items estén aprobados.')) {
         return;
       }
 
       try {
-        // Aquí iría la llamada al backend para aprobar
-        // const response = await fetch(`/api/solicitudes/${solicitudId}/aprobar`, {
-        //   method: 'POST',
-        //   credentials: 'include'
-        // });
-
-        // Simular aprobación exitosa
-        alert('✅ Solicitud aprobada exitosamente');
+        const response = await fetch(`http://localhost:3001/api/solicitudes/${solicitudId}/aprobar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
+        });
         
-        // Actualizar el estado local
-        const solicitud = solicitudesData.find(s => s.id === solicitudId);
-        if (solicitud) {
-          solicitud.estado = 'completado';
+        if (response.ok) {
+          const result = await response.json();
+          alert('✅ Solicitud aprobada exitosamente');
+          
+          cerrarModal();
+          cargarSolicitudes(); // Recargar lista (la aprobada desaparecerá del filtro)
+        } else {
+          const error = await response.json();
+          alert(`❌ Error: ${error.error || 'Error al aprobar la solicitud'}`);
         }
-        
-        cerrarModal();
-        cargarSolicitudes();
         
       } catch (error) {
         console.error('Error aprobando solicitud:', error);
-        alert('❌ Error al aprobar la solicitud');
+        alert(`❌ Error: ${error.message || 'Error al aprobar la solicitud'}`);
       }
     }
 
@@ -826,6 +1226,41 @@
     function cerrarModal() {
       document.getElementById('modal-detalles').style.display = 'none';
     }
+    
+    // Funciones para el modal de documentos
+    function abrirModalDocumento(documentoId, nombreDocumento) {
+      const modal = document.getElementById('modal-documento');
+      const iframe = document.getElementById('documento-iframe');
+      const titulo = document.getElementById('modal-documento-titulo');
+      const descargarLink = document.getElementById('descargar-documento-link');
+      
+      // Configurar título
+      titulo.textContent = `📄 ${nombreDocumento}`;
+      
+      // Configurar iframe para visualizar el documento
+      const urlVisualizar = `http://localhost:3001/api/documentos/${documentoId}/ver`;
+      iframe.src = urlVisualizar;
+      
+      // Configurar link de descarga
+      descargarLink.href = `http://localhost:3001/api/download-documento/${documentoId}`;
+      
+      // Mostrar modal
+      modal.style.display = 'flex';
+    }
+    
+    function cerrarModalDocumento(event) {
+      if (event && event.target.id !== 'modal-documento') {
+        return;
+      }
+      const modal = document.getElementById('modal-documento');
+      const iframe = document.getElementById('documento-iframe');
+      
+      // Limpiar iframe
+      iframe.src = '';
+      
+      // Ocultar modal
+      modal.style.display = 'none';
+    }
 
     // Función para formatear fechas
     function formatearFecha(fecha) {
@@ -838,7 +1273,8 @@
       const estados = {
         'borrador': 'Borrador',
         'firmado_funcionario': 'Firmado por Funcionario',
-        'completado': 'Completado'
+        'completado': 'Completado (Aprobado)',
+        'pendiente': 'Pendiente (En Revisión)'
       };
       return estados[estado] || estado;
     }

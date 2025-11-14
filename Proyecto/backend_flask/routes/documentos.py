@@ -85,16 +85,21 @@ def register_routes(app):
             
             cur = conn.cursor()
             
-            # Obtener expediente_id de la solicitud
+            # Obtener expediente_id y estado de la solicitud
             cur.execute("""
-                SELECT expediente_id FROM app.solicitudes WHERE id = %s
+                SELECT expediente_id, estado FROM app.solicitudes WHERE id = %s
             """, (solicitud_id,))
             
-            expediente_result = cur.fetchone()
-            if not expediente_result:
+            solicitud_result = cur.fetchone()
+            if not solicitud_result:
                 return jsonify({'error': 'Solicitud no encontrada'}), 404
             
-            expediente_id = expediente_result[0]
+            expediente_id = solicitud_result[0]
+            estado_solicitud = solicitud_result[1]
+            
+            # Bloquear subida de documentos si está en pendiente (revisión de jefatura)
+            if estado_solicitud == 'pendiente':
+                return jsonify({'error': 'No se pueden agregar documentos a un expediente que está en revisión de jefatura. Debe estar rechazado para poder agregar documentos.'}), 400
             
             # Insertar el documento
             cur.execute("""

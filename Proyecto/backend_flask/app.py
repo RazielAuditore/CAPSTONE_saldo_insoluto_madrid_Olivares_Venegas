@@ -36,6 +36,104 @@ app.config['SESSION_COOKIE_SECURE'] = False  # Para desarrollo local
 # Inicializar Flask-Session
 Session(app)
 
+# Función helper para verificar si una solicitud está lista para evaluación (todas las firmas + cálculo completo)
+def verificar_y_actualizar_estado_pendiente(expediente_id, solicitud_id, cur, conn):
+    """Verificar si todas las firmas y el cálculo están completos, y actualizar estado a 'pendiente'"""
+    try:
+        print(f"🔍 Verificando si solicitud {solicitud_id} puede cambiar a 'pendiente'...")
+        
+        # 1. Verificar que el funcionario haya firmado
+        cur.execute("""
+            SELECT firmado_funcionario, estado 
+            FROM app.solicitudes 
+            WHERE id = %s
+        """, (solicitud_id,))
+        solicitud = cur.fetchone()
+        
+        if not solicitud:
+            print(f"❌ Solicitud {solicitud_id} no encontrada")
+            return False
+        
+        estado_actual = solicitud[1]
+        firmado_funcionario = solicitud[0]
+        
+        print(f"📊 Estado actual: '{estado_actual}', Funcionario firmado: {firmado_funcionario}")
+        
+        if not firmado_funcionario:
+            print(f"⏳ Solicitud {solicitud_id}: Funcionario aún no ha firmado")
+            return False
+        
+        # 2. Verificar que todos los beneficiarios hayan firmado
+        cur.execute("""
+            SELECT 
+                COUNT(b.id) as total_beneficiarios,
+                COUNT(uf.id) as beneficiarios_firmados
+            FROM app.beneficiarios b
+            LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
+            WHERE b.expediente_id = %s
+        """, (expediente_id,))
+        
+        firmas_result = cur.fetchone()
+        total_beneficiarios = firmas_result[0] or 0
+        beneficiarios_firmados = firmas_result[1] or 0
+        
+        print(f"📝 Beneficiarios: {beneficiarios_firmados}/{total_beneficiarios} firmados")
+        
+        if total_beneficiarios > 0 and beneficiarios_firmados < total_beneficiarios:
+            print(f"⏳ Solicitud {solicitud_id}: Faltan firmas de beneficiarios ({beneficiarios_firmados}/{total_beneficiarios})")
+            return False
+        
+        # 3. Verificar que el cálculo de saldo insoluto esté completo
+        # Buscar el cálculo más reciente (puede estar en la misma transacción)
+        cur.execute("""
+            SELECT id, estado, fecha_calculo
+            FROM app.calculo_saldo_insoluto 
+            WHERE expediente_id = %s AND estado IN ('pendiente', 'aprobado')
+            ORDER BY fecha_calculo DESC, id DESC LIMIT 1
+        """, (expediente_id,))
+        
+        calculo = cur.fetchone()
+        if not calculo:
+            # Si no se encuentra, buscar cualquier cálculo del expediente para diagnóstico
+            cur.execute("""
+                SELECT id, estado, fecha_calculo
+                FROM app.calculo_saldo_insoluto 
+                WHERE expediente_id = %s
+                ORDER BY fecha_calculo DESC, id DESC LIMIT 1
+            """, (expediente_id,))
+            calculo_alternativo = cur.fetchone()
+            if calculo_alternativo:
+                print(f"⚠️ Solicitud {solicitud_id}: Cálculo encontrado pero con estado incorrecto")
+                print(f"   Cálculo ID: {calculo_alternativo[0]}, Estado: '{calculo_alternativo[1]}'")
+                print(f"   Se requiere estado 'pendiente' o 'aprobado'")
+            else:
+                print(f"⏳ Solicitud {solicitud_id}: No se encontró ningún cálculo de saldo insoluto para este expediente")
+            return False
+        
+        print(f"💰 Cálculo encontrado: ID {calculo[0]}, Estado: '{calculo[1]}', Fecha: {calculo[2]}")
+        
+        # 4. Si todas las condiciones se cumplen, actualizar estado a 'pendiente'
+        # Permitir cambiar desde 'borrador' o 'firmado_funcionario' a 'pendiente'
+        # Solo excluir estados finales: 'pendiente' (ya está), 'completado' (aprobado)
+        cur.execute("""
+            UPDATE app.solicitudes 
+            SET estado = 'pendiente'
+            WHERE id = %s AND estado NOT IN ('pendiente', 'completado')
+        """, (solicitud_id,))
+        
+        if cur.rowcount > 0:
+            print(f"✅ Solicitud {solicitud_id} actualizada de '{estado_actual}' a 'pendiente' - Todas las firmas y cálculo completos")
+            return True
+        else:
+            print(f"ℹ️ Solicitud {solicitud_id} no se actualizó. Estado actual: '{estado_actual}' (puede estar en estado final)")
+            return False
+            
+    except Exception as e:
+        print(f"⚠️ Error verificando estado pendiente: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return False
+
 # Decorador para requerir autenticación
 def login_required(f):
     @wraps(f)
@@ -814,6 +912,52 @@ def download_documento(documento_id):
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
+@app.route('/api/documentos/<int:documento_id>/ver', methods=['GET'])
+@login_required
+def ver_documento(documento_id):
+    """Visualizar un documento por ID (sin descarga)"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor()
+        
+        # Obtener el documento
+        cur.execute("""
+            SELECT doc_nombre_archivo, doc_archivo_blob, doc_mime_type, doc_tamano_bytes
+            FROM app.documentos_saldo_insoluto 
+            WHERE id = %s
+        """, (documento_id,))
+        
+        documento = cur.fetchone()
+        if not documento:
+            return jsonify({'error': 'Documento no encontrado'}), 404
+        
+        nombre_archivo, archivo_blob, mime_type, tamano_bytes = documento
+        
+        cur.close()
+        conn.close()
+        
+        # Crear objeto BytesIO para enviar el archivo
+        file_obj = io.BytesIO(archivo_blob)
+        
+        print(f'👁️ Visualizando archivo: {nombre_archivo} ({tamano_bytes} bytes)')
+        
+        # Enviar con as_attachment=False para visualización en navegador
+        return send_file(
+            file_obj,
+            mimetype=mime_type,
+            as_attachment=False,
+            download_name=nombre_archivo
+        )
+        
+    except Exception as e:
+        print(f'❌ Error visualizando archivo: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
 @app.route('/api/documentos/<int:solicitud_id>', methods=['GET'])
 def listar_documentos(solicitud_id):
     """Listar todos los documentos de una solicitud"""
@@ -1045,6 +1189,20 @@ def firmar_beneficiario(beneficiario_id):
         firma_result = cur.fetchone()
         firma_id = firma_result[0] if firma_result else None
         
+        # Obtener solicitud_id para verificar si puede cambiar a pendiente
+        cur.execute("""
+            SELECT id FROM app.solicitudes 
+            WHERE expediente_id = %s 
+            ORDER BY id DESC LIMIT 1
+        """, (expediente_id,))
+        
+        solicitud_result = cur.fetchone()
+        solicitud_id = solicitud_result[0] if solicitud_result else None
+        
+        # Verificar si la solicitud está lista para evaluación (todas las firmas + cálculo)
+        if solicitud_id:
+            verificar_y_actualizar_estado_pendiente(expediente_id, solicitud_id, cur, conn)
+        
         conn.commit()
         cur.close()
         conn.close()
@@ -1271,6 +1429,263 @@ def buscar_saldo_insoluto():
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
+@app.route('/api/expediente/<int:expediente_id>/actualizar', methods=['PUT'])
+@login_required
+def actualizar_expediente(expediente_id):
+    """Actualizar datos de un expediente rechazado (solo si está rechazado)"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        data = request.get_json()
+        funcionario_id = session.get('user_id')
+        
+        cur = conn.cursor()
+        
+        # Verificar que el expediente existe y está rechazado
+        cur.execute("""
+            SELECT e.id, e.funcionario_id, s.estado 
+            FROM app.expediente e
+            JOIN app.solicitudes s ON e.id = s.expediente_id
+            WHERE e.id = %s
+            ORDER BY s.id DESC LIMIT 1
+        """, (expediente_id,))
+        
+        expediente_check = cur.fetchone()
+        
+        if not expediente_check:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Expediente no encontrado'}), 404
+        
+        # Verificar que el expediente está rechazado/enRevision (no bloqueado)
+        estado_actual = expediente_check[2]
+        if estado_actual == 'pendiente':
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'No se puede editar un expediente que está en revisión de jefatura. Debe estar rechazado para poder editarlo.'}), 400
+        
+        if estado_actual != 'rechazado/enRevision':
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Solo se pueden editar expedientes rechazados que están en revisión'}), 400
+        
+        # Actualizar causante si se proporciona
+        if data.get('causante'):
+            causante_data = data['causante']
+            nombre_completo = causante_data.get('nombre_completo') or ''
+            nombre_parts = nombre_completo.split(' ', 2)
+            
+            cur.execute("""
+                UPDATE app.causante 
+                SET fal_nombre = %s,
+                    fal_apellido_p = %s,
+                    fal_apellido_m = %s,
+                    fal_fecha_defuncion = %s,
+                    fal_comuna_defuncion = %s,
+                    fal_nacionalidad = %s
+                WHERE expediente_id = %s
+            """, (
+                nombre_parts[0] if len(nombre_parts) > 0 else None,
+                nombre_parts[1] if len(nombre_parts) > 1 else None,
+                nombre_parts[2] if len(nombre_parts) > 2 else None,
+                causante_data.get('fecha_defuncion') or None,
+                causante_data.get('comuna_defuncion') or None,
+                causante_data.get('nacionalidad') or None,
+                expediente_id
+            ))
+        
+        # Actualizar representante si se proporciona
+        if data.get('representante'):
+            rep_data = data['representante']
+            nombre_completo = rep_data.get('nombre_completo') or ''
+            nombre_parts = nombre_completo.split(' ', 2)
+            
+            cur.execute("""
+                UPDATE app.representante 
+                SET rep_nombre = %s,
+                    rep_apellido_p = %s,
+                    rep_apellido_m = %s,
+                    rep_rut = %s,
+                    rep_calidad = %s,
+                    rep_telefono = %s,
+                    rep_email = %s
+                WHERE expediente_id = %s
+            """, (
+                nombre_parts[0] if len(nombre_parts) > 0 else None,
+                nombre_parts[1] if len(nombre_parts) > 1 else None,
+                nombre_parts[2] if len(nombre_parts) > 2 else None,
+                rep_data.get('rut') or None,
+                rep_data.get('calidad') or None,
+                rep_data.get('telefono') or None,
+                rep_data.get('email') or None,
+                expediente_id
+            ))
+        
+        # Actualizar beneficiarios si se proporciona
+        if data.get('beneficiarios'):
+            beneficiarios_data = data['beneficiarios']
+            for ben in beneficiarios_data:
+                ben_id = ben.get('id')
+                # Si tiene ID y no empieza con 'nuevo-', es un beneficiario existente
+                if ben_id and not str(ben_id).startswith('nuevo-'):
+                    # Actualizar beneficiario existente
+                    cur.execute("""
+                        UPDATE app.beneficiarios 
+                        SET ben_nombre = %s,
+                            ben_run = %s,
+                            ben_parentesco = %s
+                        WHERE id = %s AND expediente_id = %s
+                    """, (
+                        ben.get('nombre'),
+                        ben.get('rut'),
+                        ben.get('parentesco'),
+                        ben_id,
+                        expediente_id
+                    ))
+                else:
+                    # Crear nuevo beneficiario
+                    cur.execute("""
+                        INSERT INTO app.beneficiarios (expediente_id, solicitud_id, ben_nombre, ben_run, ben_parentesco)
+                        SELECT %s, s.id, %s, %s, %s
+                        FROM app.solicitudes s
+                        WHERE s.expediente_id = %s
+                        ORDER BY s.id DESC LIMIT 1
+                    """, (
+                        expediente_id,
+                        ben.get('nombre'),
+                        ben.get('rut'),
+                        ben.get('parentesco'),
+                        expediente_id
+                    ))
+        
+        # Actualizar sucursal en solicitud si se proporciona
+        if data.get('sucursal'):
+            cur.execute("""
+                UPDATE app.solicitudes 
+                SET sucursal = %s
+                WHERE expediente_id = %s AND estado = 'rechazado/enRevision'
+            """, (data['sucursal'], expediente_id))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Expediente actualizado exitosamente'
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error actualizando expediente: {e}')
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/beneficiarios/<int:beneficiario_id>', methods=['DELETE'])
+@login_required
+def eliminar_beneficiario(beneficiario_id):
+    """Eliminar un beneficiario"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor()
+        
+        # Verificar que el beneficiario existe y pertenece a un expediente rechazado/enRevision
+        cur.execute("""
+            SELECT b.id, b.expediente_id, s.estado
+            FROM app.beneficiarios b
+            JOIN app.solicitudes s ON b.expediente_id = s.expediente_id
+            WHERE b.id = %s
+            ORDER BY s.id DESC LIMIT 1
+        """, (beneficiario_id,))
+        
+        beneficiario = cur.fetchone()
+        if not beneficiario:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Beneficiario no encontrado'}), 404
+        
+        estado = beneficiario[2]
+        if estado != 'rechazado/enRevision':
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Solo se pueden eliminar beneficiarios de expedientes rechazados en revisión'}), 400
+        
+        # Eliminar beneficiario
+        cur.execute("DELETE FROM app.beneficiarios WHERE id = %s", (beneficiario_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Beneficiario eliminado exitosamente'
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error eliminando beneficiario: {e}')
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/documentos/<int:documento_id>', methods=['DELETE'])
+@login_required
+def eliminar_documento(documento_id):
+    """Eliminar un documento"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor()
+        
+        # Verificar que el documento existe y pertenece a un expediente rechazado/enRevision
+        cur.execute("""
+            SELECT d.id, d.expediente_id, s.estado
+            FROM app.documentos_saldo_insoluto d
+            JOIN app.solicitudes s ON d.expediente_id = s.expediente_id
+            WHERE d.id = %s
+            ORDER BY s.id DESC LIMIT 1
+        """, (documento_id,))
+        
+        documento = cur.fetchone()
+        if not documento:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Documento no encontrado'}), 404
+        
+        estado = documento[2]
+        if estado != 'rechazado/enRevision':
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Solo se pueden eliminar documentos de expedientes rechazados en revisión'}), 400
+        
+        # Eliminar documento
+        cur.execute("DELETE FROM app.documentos_saldo_insoluto WHERE id = %s", (documento_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Documento eliminado exitosamente'
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error eliminando documento: {e}')
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
 @app.route('/api/revision-expediente', methods=['POST'])
 def revision_expediente():
     """Obtener expediente completo por RUT del causante para revisión"""
@@ -1322,6 +1737,7 @@ def revision_expediente():
                 s.id as solicitud_id,
                 s.folio,
                 s.estado as estado_solicitud,
+                s.firmado_funcionario,
                 s.sucursal,
                 s.observacion as motivo_solicitud,
                 r.rep_nombre,
@@ -1347,7 +1763,7 @@ def revision_expediente():
                      f.iniciales, f.nombres, f.apellido_p, f.apellido_m,
                      c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run,
                      c.fal_fecha_defuncion, c.fal_comuna_defuncion, c.fal_nacionalidad,
-                     s.id, s.folio, s.estado, s.sucursal, s.observacion,
+                     s.id, s.folio, s.estado, s.firmado_funcionario, s.sucursal, s.observacion,
                      r.rep_nombre, r.rep_apellido_p, r.rep_apellido_m, r.rep_rut,
                      r.rep_calidad, r.rep_telefono, r.rep_email
             ORDER BY e.fecha_creacion DESC
@@ -1488,7 +1904,7 @@ def revision_expediente():
             'causante': {
                 'nombre_completo': f"{expediente['fal_nombre']} {expediente['fal_apellido_p']} {expediente['fal_apellido_m'] or ''}".strip(),
                 'rut': expediente['fal_run'],
-                'fecha_defuncion': expediente['fal_fecha_defuncion'].strftime('%d/%m/%Y') if expediente['fal_fecha_defuncion'] else 'No especificada',
+                'fecha_defuncion': expediente['fal_fecha_defuncion'].strftime('%Y-%m-%d') if expediente['fal_fecha_defuncion'] else None,
                 'comuna_defuncion': expediente['fal_comuna_defuncion'] or 'No especificada',
                 'nacionalidad': expediente['fal_nacionalidad'] or 'No especificada'
             },
@@ -1504,7 +1920,8 @@ def revision_expediente():
                 'id': expediente['solicitud_id'],
                 'sucursal': expediente['sucursal'] or 'No especificada',
                 'motivo': expediente['motivo_solicitud'] or 'No especificado',
-                'estado': expediente['estado_solicitud']
+                'estado': expediente['estado_solicitud'],
+                'firmado_funcionario': expediente.get('firmado_funcionario', False)
             },
             'funcionario': {
                 'id': expediente['funcionario_id'] or 'No especificado',
@@ -1546,6 +1963,201 @@ def revision_expediente():
         
     except Exception as e:
         print(f'❌ Error en revisión de expediente: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes-pendientes', methods=['GET'])
+@login_required
+def solicitudes_pendientes():
+    """Obtener solicitudes pendientes de aprobación por jefatura"""
+    print("🔔 Petición de solicitudes pendientes")
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        estado_filtro = request.args.get('estado', '')
+        sucursal_filtro = request.args.get('sucursal', '')
+        
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Construir consulta base
+        query = """
+            SELECT DISTINCT
+                e.id as expediente_id,
+                e.expediente_numero,
+                e.fecha_creacion,
+                s.id as solicitud_id,
+                s.folio,
+                s.estado as estado_solicitud,
+                s.firmado_funcionario,
+                s.sucursal,
+                c.fal_nombre || ' ' || c.fal_apellido_p || ' ' || COALESCE(c.fal_apellido_m, '') as causante_nombre_completo,
+                c.fal_run as causante_rut,
+                c.fal_fecha_defuncion as causante_fecha_defuncion,
+                r.rep_nombre || ' ' || COALESCE(r.rep_apellido_p, '') || ' ' || COALESCE(r.rep_apellido_m, '') as representante_nombre_completo,
+                r.rep_rut as representante_rut,
+                r.rep_calidad as representante_calidad,
+                COUNT(DISTINCT b.id) as total_beneficiarios,
+                COUNT(DISTINCT uf.id) as beneficiarios_firmados,
+                COUNT(DISTINCT d.id) as total_documentos
+            FROM app.expediente e
+            JOIN app.solicitudes s ON e.id = s.expediente_id
+            JOIN app.causante c ON e.id = c.expediente_id
+            LEFT JOIN app.representante r ON e.id = r.expediente_id
+            LEFT JOIN app.beneficiarios b ON e.id = b.expediente_id
+            LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
+            LEFT JOIN app.documentos_saldo_insoluto d ON e.id = d.expediente_id
+            WHERE 1=1
+        """
+        
+        params = []
+        
+        # Filtro por estado
+        if estado_filtro:
+            # Filtrar por estado exacto (pendiente o completado)
+            query += " AND s.estado = %s"
+            params.append(estado_filtro)
+        else:
+            # Por defecto, mostrar solo pendientes (en revisión)
+            query += " AND s.estado = 'pendiente'"
+        
+        # Filtro por sucursal
+        if sucursal_filtro:
+            query += " AND s.sucursal = %s"
+            params.append(sucursal_filtro)
+        
+        query += """
+            GROUP BY e.id, e.expediente_numero, e.fecha_creacion,
+                     s.id, s.folio, s.estado, s.firmado_funcionario, s.sucursal,
+                     c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run, c.fal_fecha_defuncion,
+                     r.rep_nombre, r.rep_apellido_p, r.rep_apellido_m, r.rep_rut, r.rep_calidad
+            ORDER BY e.fecha_creacion DESC
+        """
+        
+        cur.execute(query, tuple(params))
+        solicitudes = cur.fetchall()
+        
+        # Procesar resultado
+        resultados = []
+        for s in solicitudes:
+            pendientes_firmas = (s['total_beneficiarios'] or 0) - (s['beneficiarios_firmados'] or 0)
+            
+            # Obtener documentos del expediente
+            cur.execute("""
+                SELECT 
+                    d.id,
+                    d.doc_nombre_archivo,
+                    d.doc_tipo_id,
+                    d.doc_tamano_bytes,
+                    d.doc_mime_type,
+                    d.doc_fecha_subida,
+                    d.doc_estado,
+                    d.doc_ruta_storage
+                FROM app.documentos_saldo_insoluto d
+                WHERE d.expediente_id = %s
+                ORDER BY d.doc_fecha_subida DESC
+            """, (s['expediente_id'],))
+            
+            documentos_db = cur.fetchall()
+            documentos_lista = []
+            for doc in documentos_db:
+                tamano_mb = (doc['doc_tamano_bytes'] / (1024 * 1024)) if doc['doc_tamano_bytes'] else 0
+                documentos_lista.append({
+                    'id': doc['id'],
+                    'nombre': doc['doc_nombre_archivo'],
+                    'tipo_id': doc['doc_tipo_id'],
+                    'tamano_mb': round(tamano_mb, 2),
+                    'mime_type': doc['doc_mime_type'],
+                    'fecha_subida': doc['doc_fecha_subida'].strftime('%d/%m/%Y %H:%M') if doc['doc_fecha_subida'] else 'No especificada',
+                    'estado': doc['doc_estado'],
+                    'ruta_descarga': doc['doc_ruta_storage']
+                })
+            
+            # Verificar si representante tiene firma
+            representante_firmado = False
+            if s['representante_rut']:
+                cur.execute("""
+                    SELECT id FROM app.usuarios_firma 
+                    WHERE UPPER(rut) = UPPER(%s)
+                """, (s['representante_rut'],))
+                if cur.fetchone():
+                    representante_firmado = True
+            
+            # Obtener beneficiarios del expediente
+            cur.execute("""
+                SELECT 
+                    b.id,
+                    b.expediente_id,
+                    b.ben_nombre,
+                    b.ben_run,
+                    b.ben_parentesco,
+                    uf.id as firma_id,
+                    uf.rut as firma_rut
+                FROM app.beneficiarios b
+                LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
+                WHERE b.expediente_id = %s
+                ORDER BY b.id
+            """, (s['expediente_id'],))
+            
+            beneficiarios_db = cur.fetchall()
+            beneficiarios_lista = []
+            for ben in beneficiarios_db:
+                beneficiarios_lista.append({
+                    'id': ben['id'],
+                    'expediente_id': ben['expediente_id'],
+                    'nombre_completo': ben['ben_nombre'] or 'Sin nombre',
+                    'rut': ben['ben_run'],
+                    'parentesco': ben['ben_parentesco'],
+                    'firma': {
+                        'firmado': ben['firma_id'] is not None,
+                        'rut_firma': ben['firma_rut'] if ben['firma_rut'] else None
+                    }
+                })
+            
+            resultados.append({
+                'expediente_id': s['expediente_id'],
+                'solicitud_id': s['solicitud_id'],
+                'folio': s['folio'],
+                'estado_solicitud': s['estado_solicitud'],
+                'firmado_funcionario': s.get('firmado_funcionario', False),
+                'fecha_creacion': s['fecha_creacion'].isoformat() if s['fecha_creacion'] else None,
+                'sucursal': s['sucursal'],
+                'causante': {
+                    'nombre_completo': s['causante_nombre_completo'],
+                    'rut': s['causante_rut'],
+                    'fecha_defuncion': s['causante_fecha_defuncion'].isoformat() if s['causante_fecha_defuncion'] else None
+                },
+                'representante': {
+                    'nombre_completo': s['representante_nombre_completo'] or 'No especificado',
+                    'rut': s['representante_rut'] or 'No especificado',
+                    'calidad': s['representante_calidad'] or 'No especificada',
+                    'firmado': representante_firmado
+                },
+                'firmas': {
+                    'total_beneficiarios': s['total_beneficiarios'] or 0,
+                    'beneficiarios_firmados': s['beneficiarios_firmados'] or 0,
+                    'pendientes': max(0, pendientes_firmas)
+                },
+                'documentos': {
+                    'total': s['total_documentos'] or 0,
+                    'lista': documentos_lista
+                },
+                'beneficiarios': beneficiarios_lista
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': resultados
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error obteniendo solicitudes pendientes: {e}')
         if 'conn' in locals():
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
@@ -1715,23 +2327,130 @@ def firmar_solicitud_funcionario(solicitud_id):
         
         expediente_id = solicitud[1]
         
-        # Actualizar validación con la firma del funcionario
-        cur.execute("""
-            UPDATE app.validacion 
-            SET val_firma_funcionario = %s,
-                val_estado = 'firmado_funcionario',
-                val_fecha_firma_funcionario = NOW()
-            WHERE solicitud_id = %s
-        """, (json.dumps(firma_data), solicitud_id))
+        # Obtener funcionario_id de la firma_data o de la sesión
+        funcionario_id_firma = firma_data.get('funcionario_id') or session.get('user_id')
         
-        # Actualizar estado de la solicitud
+        print(f'🔍 funcionario_id_firma obtenido: {funcionario_id_firma}')
+        print(f'🔍 firma_data contiene: {list(firma_data.keys())}')
+        
+        if not funcionario_id_firma:
+            return jsonify({'error': 'No se pudo identificar al funcionario'}), 400
+        
+        # Verificar que el funcionario existe en la tabla funcionarios
+        cur.execute("""
+            SELECT id FROM app.funcionarios 
+            WHERE id = %s AND activo = true
+        """, (funcionario_id_firma,))
+        
+        funcionario = cur.fetchone()
+        if not funcionario:
+            return jsonify({'error': 'Funcionario no encontrado o inactivo'}), 404
+        
+        print(f'✅ Funcionario {funcionario_id_firma} verificado correctamente')
+        
+        # Verificar que las columnas existen, si no, intentar crearlas
+        try:
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'app' 
+                AND table_name = 'solicitudes' 
+                AND column_name IN ('firmado_funcionario', 'fecha_firma_funcionario', 'funcionario_id_firma')
+            """)
+            columnas_existentes = [row[0] for row in cur.fetchall()]
+            print(f'🔍 Columnas existentes: {columnas_existentes}')
+            
+            if 'firmado_funcionario' not in columnas_existentes:
+                print('⚠️ Columnas no existen, intentando crearlas...')
+                from utils.database import add_firma_funcionario_columns
+                add_firma_funcionario_columns()
+        except Exception as e:
+            print(f'⚠️ Error verificando columnas: {e}')
+        
+        # Asegurar que las columnas existen antes de hacer UPDATE
+        print('🔍 Verificando existencia de columnas...')
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_schema = 'app' 
+            AND table_name = 'solicitudes' 
+            AND column_name IN ('firmado_funcionario', 'fecha_firma_funcionario', 'funcionario_id_firma')
+        """)
+        columnas_existentes = [row[0] for row in cur.fetchall()]
+        print(f'🔍 Columnas encontradas: {columnas_existentes}')
+        
+        if len(columnas_existentes) < 3:
+            print('⚠️ Faltan columnas, creándolas ahora...')
+            cur.close()
+            conn.close()
+            from utils.database import add_firma_funcionario_columns
+            add_firma_funcionario_columns()
+            conn = get_db_connection()
+            cur = conn.cursor()
+            print('✅ Columnas creadas, continuando con UPDATE...')
+        
+        # Actualizar solicitudes con la información de firma del funcionario
+        print(f'📝 Ejecutando UPDATE en solicitud {solicitud_id} con funcionario_id={funcionario_id_firma}')
         cur.execute("""
             UPDATE app.solicitudes 
-            SET estado = 'firmado_funcionario'
+            SET firmado_funcionario = TRUE,
+                fecha_firma_funcionario = NOW(),
+                funcionario_id_firma = %s,
+                estado = 'firmado_funcionario'
+            WHERE id = %s
+        """, (funcionario_id_firma, solicitud_id))
+        
+        print(f'📊 Rowcount después del UPDATE: {cur.rowcount}')
+        
+        # Verificar que el UPDATE de solicitud funcionó
+        if cur.rowcount == 0:
+            print(f'❌ ERROR: No se pudo actualizar solicitud {solicitud_id} - rowcount: {cur.rowcount}')
+            print(f'🔍 Verificando si la solicitud existe...')
+            cur.execute("SELECT id FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+            existe = cur.fetchone()
+            if existe:
+                print(f'⚠️ La solicitud existe pero el UPDATE no afectó filas. ¿Problema con las columnas?')
+            else:
+                print(f'⚠️ La solicitud {solicitud_id} NO existe')
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'No se pudo actualizar el estado de la solicitud'}), 404
+        
+        print(f'✅ Solicitud {solicitud_id} actualizada EXITOSAMENTE - firmado_funcionario=TRUE, funcionario_id_firma={funcionario_id_firma}')
+        
+        # Actualizar validación con la firma del funcionario (mantener por compatibilidad)
+        # Si falla, no hacer rollback porque ya actualizamos solicitudes
+        try:
+            cur.execute("""
+                UPDATE app.validacion 
+                SET val_firma_funcionario = %s,
+                    val_estado = 'firmado_funcionario',
+                    updated_at = NOW()
+                WHERE solicitud_id = %s
+            """, (json.dumps(firma_data), solicitud_id))
+            
+            if cur.rowcount == 0:
+                print(f'⚠️ No se encontró registro de validación para solicitud {solicitud_id}, pero la solicitud ya fue actualizada')
+            else:
+                print(f'✅ Validación actualizada para solicitud {solicitud_id}')
+        except Exception as e:
+            print(f'⚠️ Error actualizando validación (no crítico): {e}')
+        
+        # Commit siempre para guardar los cambios de solicitudes
+        print('💾 Ejecutando COMMIT...')
+        conn.commit()
+        print('✅ COMMIT ejecutado exitosamente')
+        
+        # Verificar que se guardó correctamente
+        cur.execute("""
+            SELECT firmado_funcionario, fecha_firma_funcionario, funcionario_id_firma 
+            FROM app.solicitudes 
             WHERE id = %s
         """, (solicitud_id,))
+        resultado = cur.fetchone()
+        print(f'🔍 Verificación POST-COMMIT: firmado={resultado[0]}, fecha={resultado[1]}, funcionario_id={resultado[2]}')
         
-        conn.commit()
         cur.close()
         conn.close()
         
@@ -1754,6 +2473,100 @@ def firmar_solicitud_funcionario(solicitud_id):
             conn.rollback()
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes/<int:solicitud_id>/firmar-funcionario-directo', methods=['POST'])
+@login_required
+def firmar_solicitud_funcionario_directo(solicitud_id):
+    """Firmar solicitud como funcionario - Solo guarda en app.solicitudes"""
+    print(f"🔔 Petición de firma DIRECTA de funcionario para solicitud: {solicitud_id}")
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        data = request.get_json()
+        firma_data = data.get('firma_data') if data else {}
+        
+        cur = conn.cursor()
+        
+        # Obtener funcionario_id de la firma_data o de la sesión
+        funcionario_id_firma = firma_data.get('funcionario_id') if firma_data else None
+        if not funcionario_id_firma:
+            funcionario_id_firma = session.get('user_id')
+        
+        print(f'🔍 funcionario_id_firma: {funcionario_id_firma}')
+        
+        if not funcionario_id_firma:
+            return jsonify({'error': 'No se pudo identificar al funcionario'}), 400
+        
+        # Verificar que el funcionario existe
+        cur.execute("SELECT id FROM app.funcionarios WHERE id = %s AND activo = true", (funcionario_id_firma,))
+        if not cur.fetchone():
+            return jsonify({'error': 'Funcionario no encontrado o inactivo'}), 404
+        
+        # Crear columnas si no existen
+        try:
+            cur.execute("ALTER TABLE app.solicitudes ADD COLUMN IF NOT EXISTS firmado_funcionario BOOLEAN DEFAULT FALSE")
+            conn.commit()
+            print('✅ Columna firmado_funcionario verificada/creada')
+        except Exception as e:
+            print(f'⚠️ Error creando columna (puede que ya exista): {e}')
+        
+        # Obtener expediente_id antes de actualizar
+        cur.execute("SELECT expediente_id FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        expediente_result = cur.fetchone()
+        if not expediente_result:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return jsonify({'error': f'Solicitud {solicitud_id} no encontrada'}), 404
+        
+        expediente_id = expediente_result[0]
+        
+        # UPDATE directo en solicitudes - SOLO firmado_funcionario
+        cur.execute("""
+            UPDATE app.solicitudes 
+            SET firmado_funcionario = TRUE
+            WHERE id = %s
+        """, (solicitud_id,))
+        
+        print(f'📊 Rowcount: {cur.rowcount}')
+        
+        if cur.rowcount == 0:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return jsonify({'error': f'No se pudo actualizar solicitud {solicitud_id}'}), 404
+        
+        # Verificar si la solicitud está lista para evaluación (todas las firmas + cálculo)
+        verificar_y_actualizar_estado_pendiente(expediente_id, solicitud_id, cur, conn)
+        
+        conn.commit()
+        
+        # Verificar que se guardó
+        cur.execute("SELECT firmado_funcionario, estado FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        resultado = cur.fetchone()
+        print(f'✅ Guardado: firmado_funcionario={resultado[0]}, estado={resultado[1]}')
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Firma guardada en solicitudes exitosamente',
+            'data': {
+                'solicitud_id': solicitud_id,
+                'firmado_funcionario': True
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error: {e}')
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno: {str(e)}'}), 500
 
 @app.route('/api/download-expediente-completo/<int:expediente_id>', methods=['GET'])
 @login_required
@@ -1828,6 +2641,17 @@ def guardar_calculo_saldo():
         cur = conn.cursor()
         funcionario_id = session.get('user_id')
         
+        # Verificar estado de la solicitud para bloquear si está en pendiente
+        if solicitud_id:
+            cur.execute("""
+                SELECT estado FROM app.solicitudes WHERE id = %s
+            """, (solicitud_id,))
+            solicitud_result = cur.fetchone()
+            if solicitud_result and solicitud_result[0] == 'pendiente':
+                return jsonify({
+                    'error': 'No se puede calcular o recalcular el saldo insoluto de un expediente que está en revisión de jefatura. Debe estar rechazado para poder recalcular.'
+                }), 400
+        
         # Verificar si ya existe un cálculo activo (pendiente o aprobado)
         cur.execute("""
             SELECT id, estado FROM app.calculo_saldo_insoluto 
@@ -1837,27 +2661,72 @@ def guardar_calculo_saldo():
         
         calculo_existente = cur.fetchone()
         if calculo_existente:
-            return jsonify({
-                'error': f'Ya existe un cálculo {calculo_existente[1]} para este expediente. Solo se puede recalcular si el expediente fue rechazado.'
-            }), 400
+            # Verificar si el expediente está rechazado/enRevision para permitir modificar
+            cur.execute("""
+                SELECT estado FROM app.solicitudes 
+                WHERE expediente_id = %s 
+                ORDER BY id DESC LIMIT 1
+            """, (expediente_id,))
+            solicitud_estado = cur.fetchone()
+            if not solicitud_estado or solicitud_estado[0] != 'rechazado/enRevision':
+                return jsonify({
+                    'error': f'Ya existe un cálculo {calculo_existente[1]} para este expediente. Solo se puede recalcular si el expediente fue rechazado.'
+                }), 400
         
-        # Insertar cálculo principal
-        cur.execute("""
-            INSERT INTO app.calculo_saldo_insoluto 
-            (expediente_id, solicitud_id, total_calculado, calculado_por, estado)
-            VALUES (%s, %s, %s, %s, 'pendiente')
-            RETURNING id
-        """, (expediente_id, solicitud_id, total, funcionario_id))
+        # Si existe un cálculo rechazado y el expediente está en revisión, actualizar en lugar de crear nuevo
+        calculo_id = None
+        if calculo_existente:
+            calculo_id = calculo_existente[0]
+            # Actualizar cálculo existente
+            cur.execute("""
+                UPDATE app.calculo_saldo_insoluto 
+                SET total_calculado = %s,
+                    calculado_por = %s,
+                    estado = 'pendiente',
+                    fecha_calculo = NOW()
+                WHERE id = %s
+            """, (total, funcionario_id, calculo_id))
+            
+            # Eliminar detalles antiguos
+            cur.execute("DELETE FROM app.detalle_calculo_saldo WHERE calculo_id = %s", (calculo_id,))
+        else:
+            # Insertar cálculo principal
+            cur.execute("""
+                INSERT INTO app.calculo_saldo_insoluto 
+                (expediente_id, solicitud_id, total_calculado, calculado_por, estado)
+                VALUES (%s, %s, %s, %s, 'pendiente')
+                RETURNING id
+            """, (expediente_id, solicitud_id, total, funcionario_id))
+            calculo_id = cur.fetchone()[0]
         
-        calculo_id = cur.fetchone()[0]
-        
-        # Insertar detalles de beneficios
+        # Insertar detalles de beneficios (tanto para nuevo como para actualizado)
         for beneficio in beneficios:
             cur.execute("""
                 INSERT INTO app.detalle_calculo_saldo 
                 (calculo_id, beneficio_codigo, beneficio_nombre, monto)
                 VALUES (%s, %s, %s, %s)
             """, (calculo_id, beneficio.get('codigo'), beneficio.get('nombre'), beneficio.get('monto')))
+        
+        print(f"✅ Cálculo guardado: ID {calculo_id}, Total: {total}")
+        
+        # Verificar si la solicitud está lista para evaluación (todas las firmas + cálculo)
+        # IMPORTANTE: Verificar DESPUÉS de insertar el cálculo para que lo encuentre
+        estado_actualizado = False
+        if solicitud_id:
+            print(f"\n{'='*60}")
+            print(f"🔍 INICIANDO VERIFICACIÓN DE ESTADO PARA SOLICITUD {solicitud_id}")
+            print(f"{'='*60}\n")
+            resultado_verificacion = verificar_y_actualizar_estado_pendiente(expediente_id, solicitud_id, cur, conn)
+            print(f"\n{'='*60}")
+            if resultado_verificacion:
+                print(f"✅ RESULTADO: Solicitud {solicitud_id} BLOQUEADA - Estado actualizado a 'pendiente'")
+                estado_actualizado = True
+            else:
+                print(f"❌ RESULTADO: Solicitud {solicitud_id} NO se pudo actualizar a 'pendiente'")
+                print(f"   Revisa los mensajes anteriores para ver qué condición no se cumplió")
+            print(f"{'='*60}\n")
+        else:
+            print(f"⚠️ No se proporcionó solicitud_id, no se puede verificar estado")
         
         conn.commit()
         cur.close()
@@ -1869,7 +2738,8 @@ def guardar_calculo_saldo():
             'data': {
                 'calculo_id': calculo_id,
                 'expediente_id': expediente_id,
-                'total': total
+                'total': total,
+                'estado_actualizado': estado_actualizado
             }
         }), 201
         
@@ -1925,13 +2795,601 @@ def verificar_calculo_existente(expediente_id):
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
+@app.route('/api/expediente/<int:expediente_id>/calculo-completo', methods=['GET'])
+@login_required
+def obtener_calculo_completo(expediente_id):
+    """Obtener cálculo completo de saldo insoluto con detalles de beneficios"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Buscar cálculo activo (pendiente o aprobado)
+        cur.execute("""
+            SELECT 
+                c.id,
+                c.estado,
+                c.total_calculado,
+                c.fecha_calculo,
+                c.solicitud_id,
+                c.calculado_por,
+                f.nombres || ' ' || f.apellido_p as funcionario_nombre
+            FROM app.calculo_saldo_insoluto c
+            LEFT JOIN app.funcionarios f ON c.calculado_por = f.id
+            WHERE c.expediente_id = %s AND c.estado IN ('pendiente', 'aprobado')
+            ORDER BY c.fecha_calculo DESC LIMIT 1
+        """, (expediente_id,))
+        
+        calculo = cur.fetchone()
+        
+        if not calculo:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'existe': False,
+                'message': 'No existe cálculo para este expediente'
+            }), 200
+        
+        # Obtener detalles de beneficios
+        cur.execute("""
+            SELECT 
+                beneficio_codigo,
+                beneficio_nombre,
+                monto
+            FROM app.detalle_calculo_saldo
+            WHERE calculo_id = %s
+            ORDER BY beneficio_codigo
+        """, (calculo['id'],))
+        
+        detalles = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'existe': True,
+            'calculo': {
+                'id': calculo['id'],
+                'estado': calculo['estado'],
+                'total_calculado': float(calculo['total_calculado']),
+                'fecha_calculo': calculo['fecha_calculo'].isoformat() if calculo['fecha_calculo'] else None,
+                'solicitud_id': calculo['solicitud_id'],
+                'calculado_por': calculo['calculado_por'],
+                'funcionario_nombre': calculo['funcionario_nombre'],
+                'beneficios': [
+                    {
+                        'codigo': det['beneficio_codigo'],
+                        'nombre': det['beneficio_nombre'],
+                        'monto': float(det['monto'])
+                    }
+                    for det in detalles
+                ]
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error obteniendo cálculo completo: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes/<int:solicitud_id>/aprobacion-items', methods=['GET'])
+@login_required
+def obtener_aprobacion_items(solicitud_id):
+    """Obtener estado de aprobación de todos los items de una solicitud"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Obtener expediente_id desde solicitud
+        cur.execute("SELECT expediente_id FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        solicitud = cur.fetchone()
+        
+        if not solicitud:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Solicitud no encontrada'}), 404
+        
+        expediente_id = solicitud['expediente_id']
+        
+        # Obtener todas las aprobaciones de items para esta solicitud
+        cur.execute("""
+            SELECT 
+                item_tipo,
+                estado,
+                observacion,
+                fecha_aprobacion,
+                f.nombres || ' ' || f.apellido_p as aprobado_por_nombre
+            FROM app.aprobacion_items ai
+            LEFT JOIN app.funcionarios f ON ai.aprobado_por = f.id
+            WHERE ai.expediente_id = %s AND ai.solicitud_id = %s
+            ORDER BY item_tipo
+        """, (expediente_id, solicitud_id))
+        
+        items = cur.fetchall()
+        
+        # Convertir a diccionario por tipo de item
+        items_dict = {}
+        for item in items:
+            items_dict[item['item_tipo']] = {
+                'estado': item['estado'],
+                'observacion': item['observacion'],
+                'fecha_aprobacion': item['fecha_aprobacion'].isoformat() if item['fecha_aprobacion'] else None,
+                'aprobado_por': item['aprobado_por_nombre']
+            }
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': items_dict
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error obteniendo aprobación de items: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes/<int:solicitud_id>/aprobacion-items', methods=['POST'])
+@login_required
+def aprobar_rechazar_item(solicitud_id):
+    """Aprobar o rechazar un item específico de una solicitud"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        data = request.get_json()
+        item_tipo = data.get('item_tipo')
+        estado = data.get('estado')  # 'aprobado' o 'rechazado'
+        observacion = data.get('observacion', '')
+        
+        # Validaciones
+        if not item_tipo:
+            return jsonify({'error': 'item_tipo es requerido'}), 400
+        
+        if estado not in ['aprobado', 'rechazado']:
+            return jsonify({'error': 'estado debe ser "aprobado" o "rechazado"'}), 400
+        
+        if estado == 'rechazado' and not observacion:
+            return jsonify({'error': 'La observación es obligatoria al rechazar un item'}), 400
+        
+        if item_tipo not in ['causante', 'beneficiarios', 'firmas', 'calculo', 'documentos', 'general']:
+            return jsonify({'error': 'item_tipo inválido'}), 400
+        
+        cur = conn.cursor()
+        funcionario_id = session.get('user_id')
+        
+        # Obtener expediente_id desde solicitud
+        cur.execute("SELECT expediente_id FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        solicitud = cur.fetchone()
+        
+        if not solicitud:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Solicitud no encontrada'}), 404
+        
+        expediente_id = solicitud[0]
+        
+        # Insertar o actualizar aprobación del item
+        cur.execute("""
+            INSERT INTO app.aprobacion_items 
+            (expediente_id, solicitud_id, item_tipo, estado, observacion, aprobado_por, fecha_aprobacion)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (expediente_id, solicitud_id, item_tipo) 
+            DO UPDATE SET 
+                estado = EXCLUDED.estado,
+                observacion = EXCLUDED.observacion,
+                aprobado_por = EXCLUDED.aprobado_por,
+                fecha_aprobacion = NOW(),
+                updated_at = NOW()
+            RETURNING id
+        """, (expediente_id, solicitud_id, item_tipo, estado, observacion if observacion else None, funcionario_id))
+        
+        aprobacion_id = cur.fetchone()[0]
+        
+        # Si se rechaza un item, cambiar estado de la solicitud a 'rechazado/enRevision'
+        if estado == 'rechazado':
+            # Verificar si hay otros items rechazados
+            cur.execute("""
+                SELECT COUNT(*) FROM app.aprobacion_items 
+                WHERE expediente_id = %s AND solicitud_id = %s AND estado = 'rechazado'
+            """, (expediente_id, solicitud_id))
+            total_rechazados = cur.fetchone()[0]
+            
+            # Cambiar estado de solicitud a 'rechazado/enRevision' si hay al menos un item rechazado
+            # Esto permite que el funcionario pueda editar y corregir
+            # Si está en 'pendiente', cambiar a 'rechazado/enRevision'
+            # Si ya está en 'rechazado/enRevision', mantenerlo
+            cur.execute("""
+                UPDATE app.solicitudes 
+                SET estado = 'rechazado/enRevision'
+                WHERE id = %s AND estado = 'pendiente'
+            """, (solicitud_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Item {item_tipo} {estado} exitosamente',
+            'data': {
+                'id': aprobacion_id,
+                'item_tipo': item_tipo,
+                'estado': estado
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error aprobando/rechazando item: {e}')
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes-rechazadas', methods=['GET'])
+@login_required
+def solicitudes_rechazadas():
+    """Obtener solicitudes rechazadas del funcionario actual"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        funcionario_id = session.get('user_id')
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Obtener solicitudes rechazadas del funcionario (por expediente que gestionó)
+        cur.execute("""
+            SELECT DISTINCT
+                e.id as expediente_id,
+                e.expediente_numero,
+                e.fecha_creacion,
+                s.id as solicitud_id,
+                s.folio,
+                s.estado as estado_solicitud,
+                s.firmado_funcionario,
+                s.sucursal,
+                c.fal_nombre || ' ' || c.fal_apellido_p || ' ' || COALESCE(c.fal_apellido_m, '') as causante_nombre_completo,
+                c.fal_run as causante_rut,
+                COUNT(DISTINCT ai.id) FILTER (WHERE ai.estado = 'rechazado') as items_rechazados
+            FROM app.expediente e
+            JOIN app.solicitudes s ON e.id = s.expediente_id
+            JOIN app.causante c ON e.id = c.expediente_id
+            LEFT JOIN app.aprobacion_items ai ON s.id = ai.solicitud_id AND ai.estado = 'rechazado'
+            WHERE s.estado = 'rechazado/enRevision' AND e.funcionario_id = %s
+            GROUP BY e.id, e.expediente_numero, e.fecha_creacion,
+                     s.id, s.folio, s.estado, s.firmado_funcionario, s.sucursal,
+                     c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run
+            ORDER BY e.fecha_creacion DESC
+        """, (funcionario_id,))
+        
+        solicitudes = cur.fetchall()
+        
+        resultados = []
+        for s in solicitudes:
+            resultados.append({
+                'expediente_id': s['expediente_id'],
+                'solicitud_id': s['solicitud_id'],
+                'folio': s['folio'],
+                'estado_solicitud': s['estado_solicitud'],
+                'fecha_creacion': s['fecha_creacion'].isoformat() if s['fecha_creacion'] else None,
+                'sucursal': s['sucursal'],
+                'causante': {
+                    'nombre_completo': s['causante_nombre_completo'],
+                    'rut': s['causante_rut']
+                },
+                'items_rechazados': s['items_rechazados'] or 0
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': resultados
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error obteniendo solicitudes rechazadas: {e}')
+        if 'conn' in locals():
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes/<int:solicitud_id>/aprobar', methods=['POST'])
+@login_required
+def aprobar_solicitud_completa(solicitud_id):
+    """Aprobar una solicitud completa - verifica que todos los items estén aprobados"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor()
+        funcionario_id = session.get('user_id')
+        
+        # Obtener expediente_id desde solicitud
+        cur.execute("SELECT expediente_id, estado FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        solicitud = cur.fetchone()
+        
+        if not solicitud:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Solicitud no encontrada'}), 404
+        
+        expediente_id = solicitud[0]
+        estado_actual = solicitud[1]
+        
+        # Verificar que la solicitud no esté ya aprobada o rechazada
+        if estado_actual == 'completado':
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'La solicitud ya está aprobada'}), 400
+        
+        # Permitir aprobar solicitudes en revisión (rechazado/enRevision)
+        # Solo se pueden aprobar solicitudes en 'pendiente' o 'rechazado/enRevision'
+        if estado_actual not in ['pendiente', 'rechazado/enRevision']:
+            cur.close()
+            conn.close()
+            return jsonify({'error': f'No se puede aprobar una solicitud en estado: {estado_actual}. Debe estar en pendiente o rechazado/enRevision.'}), 400
+        
+        # Verificar que todos los items requeridos estén aprobados
+        cur.execute("""
+            SELECT item_tipo, estado 
+            FROM app.aprobacion_items 
+            WHERE expediente_id = %s AND solicitud_id = %s
+        """, (expediente_id, solicitud_id))
+        
+        items = cur.fetchall()
+        
+        # Items requeridos que deben estar aprobados
+        items_requeridos = ['causante', 'beneficiarios', 'firmas', 'calculo', 'documentos']
+        items_aprobados = {item[0]: item[1] for item in items}
+        
+        # Verificar que todos los items requeridos estén aprobados
+        items_faltantes = []
+        for item_tipo in items_requeridos:
+            if item_tipo not in items_aprobados or items_aprobados[item_tipo] != 'aprobado':
+                items_faltantes.append(item_tipo)
+        
+        if items_faltantes:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'error': f'Faltan items por aprobar: {", ".join(items_faltantes)}',
+                'items_faltantes': items_faltantes
+            }), 400
+        
+        # Cambiar estado de la solicitud a 'completado'
+        cur.execute("""
+            UPDATE app.solicitudes 
+            SET estado = 'completado'
+            WHERE id = %s
+        """, (solicitud_id,))
+        
+        # Actualizar estado del cálculo a 'aprobado' si existe
+        cur.execute("""
+            UPDATE app.calculo_saldo_insoluto 
+            SET estado = 'aprobado',
+                updated_at = NOW()
+            WHERE expediente_id = %s AND estado = 'pendiente'
+        """, (expediente_id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Solicitud aprobada exitosamente',
+            'data': {
+                'solicitud_id': solicitud_id,
+                'estado': 'completado'
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error aprobando solicitud: {e}')
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes/<int:solicitud_id>/reenviar', methods=['POST'])
+@login_required
+def reenviar_solicitud(solicitud_id):
+    """Reenviar solicitud rechazada para nueva evaluación por jefatura"""
+    print(f"🔄 Petición de reenvío para solicitud: {solicitud_id}")
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor()
+        
+        # Verificar que la solicitud existe y está rechazada
+        cur.execute("SELECT estado, expediente_id FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        solicitud = cur.fetchone()
+        
+        if not solicitud:
+            cur.close()
+            conn.close()
+            print(f"❌ Solicitud {solicitud_id} no encontrada")
+            return jsonify({'error': 'Solicitud no encontrada'}), 404
+        
+        estado_actual = solicitud[0]
+        expediente_id = solicitud[1]
+        
+        print(f"📊 Estado actual de solicitud {solicitud_id}: '{estado_actual}'")
+        
+        # Solo aceptar 'rechazado/enRevision' (estado cuando está siendo corregida)
+        if estado_actual != 'rechazado/enRevision':
+            cur.close()
+            conn.close()
+            print(f"⚠️ La solicitud no está en estado rechazado/enRevision. Estado: '{estado_actual}'")
+            return jsonify({'error': f'La solicitud debe estar en estado rechazado/enRevision para reenviarla. Estado actual: {estado_actual}'}), 400
+        
+        # Cambiar estado de solicitud a 'pendiente'
+        print(f"🔄 Cambiando estado de '{estado_actual}' a 'pendiente'...")
+        cur.execute("""
+            UPDATE app.solicitudes 
+            SET estado = 'pendiente'
+            WHERE id = %s
+        """, (solicitud_id,))
+        
+        if cur.rowcount == 0:
+            print(f"⚠️ No se pudo actualizar solicitud {solicitud_id} - rowcount: {cur.rowcount}")
+        else:
+            print(f"✅ Solicitud {solicitud_id} actualizada - rowcount: {cur.rowcount}")
+        
+        # Resetear items rechazados a 'pendiente' para nueva evaluación
+        cur.execute("""
+            UPDATE app.aprobacion_items 
+            SET estado = 'pendiente',
+                observacion = NULL,
+                updated_at = NOW()
+            WHERE expediente_id = %s AND solicitud_id = %s AND estado = 'rechazado'
+        """, (expediente_id, solicitud_id))
+        
+        items_reseteados = cur.rowcount
+        print(f"✅ Items rechazados reseteados: {items_reseteados}")
+        
+        # Mantener items aprobados como aprobados (no resetearlos)
+        
+        conn.commit()
+        
+        # Verificar que se guardó correctamente
+        cur.execute("SELECT estado FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        estado_verificado = cur.fetchone()[0]
+        print(f"✅ Estado verificado después del commit: '{estado_verificado}'")
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Solicitud reenviada exitosamente para nueva evaluación',
+            'data': {
+                'solicitud_id': solicitud_id,
+                'estado': 'pendiente',
+                'estado_anterior': estado_actual,
+                'items_reseteados': items_reseteados
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error reenviando solicitud: {e}')
+        import traceback
+        print(traceback.format_exc())
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+@app.route('/api/solicitudes/<int:solicitud_id>/enviar', methods=['POST'])
+@login_required
+def enviar_solicitud_revision(solicitud_id):
+    """Enviar solicitud rechazada a revisión (cambia de 'rechazado' a 'rechazado/enRevision')"""
+    print(f"📤 Petición de envío a revisión para solicitud: {solicitud_id}")
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+    
+    try:
+        cur = conn.cursor()
+        
+        # Verificar que la solicitud existe y está rechazada
+        cur.execute("SELECT estado, expediente_id FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        solicitud = cur.fetchone()
+        
+        if not solicitud:
+            cur.close()
+            conn.close()
+            print(f"❌ Solicitud {solicitud_id} no encontrada")
+            return jsonify({'error': 'Solicitud no encontrada'}), 404
+        
+        estado_actual = solicitud[0]
+        expediente_id = solicitud[1]
+        
+        print(f"📊 Estado actual de solicitud {solicitud_id}: '{estado_actual}'")
+        
+        # Solo aceptar 'rechazado' (no puede estar ya en revisión)
+        if estado_actual != 'rechazado':
+            cur.close()
+            conn.close()
+            print(f"⚠️ La solicitud no está en estado rechazado. Estado: '{estado_actual}'")
+            return jsonify({'error': f'La solicitud debe estar rechazada para enviarla a revisión. Estado actual: {estado_actual}'}), 400
+        
+        # Cambiar estado de solicitud a 'rechazado/enRevision'
+        print(f"🔄 Cambiando estado de 'rechazado' a 'rechazado/enRevision'...")
+        cur.execute("""
+            UPDATE app.solicitudes 
+            SET estado = 'rechazado/enRevision'
+            WHERE id = %s
+        """, (solicitud_id,))
+        
+        if cur.rowcount == 0:
+            print(f"⚠️ No se pudo actualizar solicitud {solicitud_id} - rowcount: {cur.rowcount}")
+        else:
+            print(f"✅ Solicitud {solicitud_id} actualizada - rowcount: {cur.rowcount}")
+        
+        # NO resetear items rechazados - mantener las observaciones para que jefatura vea qué se corrigió
+        
+        conn.commit()
+        
+        # Verificar que se guardó correctamente
+        cur.execute("SELECT estado FROM app.solicitudes WHERE id = %s", (solicitud_id,))
+        estado_verificado = cur.fetchone()[0]
+        print(f"✅ Estado verificado después del commit: '{estado_verificado}'")
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Solicitud enviada a revisión exitosamente',
+            'data': {
+                'solicitud_id': solicitud_id,
+                'estado': 'rechazado/enRevision',
+                'estado_anterior': estado_actual
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f'❌ Error enviando solicitud a revisión: {e}')
+        import traceback
+        print(traceback.format_exc())
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
 if __name__ == '__main__':
     if test_connection():
         # Crear tabla de firmas de beneficiarios si no existe
         create_firmas_beneficiarios_table()
         # Crear tablas de cálculo de saldo insoluto si no existen
-        from utils.database import create_calculo_saldo_insoluto_tables
+        from utils.database import create_calculo_saldo_insoluto_tables, create_aprobacion_items_table
         create_calculo_saldo_insoluto_tables()
+        # Crear tabla de aprobación de items si no existe
+        create_aprobacion_items_table()
+        # Agregar columnas de firma de funcionario a solicitudes
+        from utils.database import add_firma_funcionario_columns
+        add_firma_funcionario_columns()
+        # Aumentar tamaño de columnas de RUT
+        from utils.database import fix_rut_columns
+        fix_rut_columns()
+        # Eliminar columnas innecesarias de firma
+        from utils.database import remove_unused_firma_columns
+        remove_unused_firma_columns()
         
         config = Config()
         print(f'✅ Servidor Flask ejecutándose en puerto {config.PORT}')
