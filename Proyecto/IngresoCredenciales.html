@@ -52,39 +52,38 @@
 
   <script>
     function formatearRUT(input) {
-      // Obtener solo números y K
-      let valor = input.value.replace(/[^0-9Kk]/g, '');
+      let value = input.value.replace(/[^0-9kK]/g, '');
       
-      // Limitar a 9 caracteres máximo
-      if (valor.length > 9) {
-        valor = valor.substring(0, 9);
-      }
-      
-      // Formatear con puntos y guión
-      if (valor.length > 0) {
-        let rutFormateado = '';
+      if (value.length > 0) {
+        // Determinar si es RUT de 7 o 8 dígitos (sin contar el DV)
+        const bodyLength = value.length - 1; // Restar el dígito verificador
         
-        // Si tiene más de 1 dígito, separar el dígito verificador
-        if (valor.length > 1) {
-          const numero = valor.slice(0, -1); // Todo excepto el último dígito
-          const dv = valor.slice(-1); // Último dígito (verificador)
-          
-          // Formatear el número con puntos
-          let numeroFormateado = '';
-          for (let i = numero.length - 1, j = 0; i >= 0; i--, j++) {
-            if (j > 0 && j % 3 === 0) {
-              numeroFormateado = '.' + numeroFormateado;
-            }
-            numeroFormateado = numero[i] + numeroFormateado;
+        if (bodyLength <= 7) {
+          // Formato: x.xxx.xxx-x (7 dígitos + DV)
+          if (value.length > 1) {
+            value = value.substring(0, 1) + '.' + value.substring(1);
           }
-          
-          rutFormateado = numeroFormateado + '-' + dv;
+          if (value.length > 5) {
+            value = value.substring(0, 5) + '.' + value.substring(5);
+          }
         } else {
-          rutFormateado = valor;
+          // Formato: xx.xxx.xxx-x (8 dígitos + DV)
+          if (value.length > 2) {
+            value = value.substring(0, 2) + '.' + value.substring(2);
+          }
+          if (value.length > 6) {
+            value = value.substring(0, 6) + '.' + value.substring(6);
+          }
         }
         
-        input.value = rutFormateado;
+        // Agregar guión antes del último carácter si es necesario
+        if (value.length > 8 && !value.includes('-')) {
+          const lastChar = value.slice(-1);
+          value = value.slice(0, -1) + '-' + lastChar;
+        }
       }
+      
+      input.value = value;
     }
 
     async function login() {
