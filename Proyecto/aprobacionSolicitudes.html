@@ -778,6 +778,11 @@
             <button class="btn btn-info" onclick="verDetalles(${solicitud.id})">
               👁️ Ver Detalles
             </button>
+            ${solicitud.estado === 'completado' && solicitud.estado_calculo === 'aprobado' ? `
+              <button class="btn btn-primary" onclick="descargarResolucion(${solicitud.id}, this)">
+                📄 Descargar Resolución
+              </button>
+            ` : ''}
             ${solicitud.firmado_funcionario === true && solicitud.estado !== 'completado' ? `
               <button class="btn btn-success" onclick="aprobarSolicitud(${solicitud.solicitud_id})">
                 ✅ Aprobar
@@ -1219,6 +1224,58 @@
       } catch (error) {
         console.error('Error rechazando solicitud:', error);
         alert('❌ Error al rechazar la solicitud');
+      }
+    }
+
+    // Función para descargar resolución
+    async function descargarResolucion(expedienteId, botonElement) {
+      try {
+        // Mostrar indicador de carga
+        const boton = botonElement || event?.target;
+        const textoOriginal = boton.innerHTML;
+        boton.disabled = true;
+        boton.innerHTML = '⏳ Generando...';
+        
+        // Llamar al endpoint para generar y descargar la resolución
+        const response = await fetch(`http://localhost:3001/api/generar-resolucion/${expedienteId}`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Error al generar la resolución');
+        }
+        
+        // Obtener el blob del archivo
+        const blob = await response.blob();
+        
+        // Crear un enlace temporal para descargar
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `resolucion_${expedienteId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        // Restaurar botón
+        boton.disabled = false;
+        boton.innerHTML = textoOriginal;
+        
+        alert('✅ Resolución descargada exitosamente');
+        
+      } catch (error) {
+        console.error('Error descargando resolución:', error);
+        alert(`❌ Error: ${error.message || 'Error al descargar la resolución'}`);
+        
+        // Restaurar botón en caso de error
+        const boton = botonElement || event?.target;
+        if (boton) {
+          boton.disabled = false;
+          boton.innerHTML = '📄 Descargar Resolución';
+        }
       }
     }
 

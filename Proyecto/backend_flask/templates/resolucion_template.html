@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Resolución de Saldo Insoluto</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 2.5cm;
+        }
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #000;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .resolution-number {
+            font-size: 12pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .center-info {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-weight: bold;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .vistos, .considerando, .resuelvo {
+            margin-top: 20px;
+            text-align: justify;
+        }
+        .vistos ol, .considerando ol {
+            padding-left: 20px;
+        }
+        .vistos li, .considerando li {
+            margin-bottom: 10px;
+            text-align: justify;
+        }
+        .resuelvo ol {
+            padding-left: 20px;
+        }
+        .resuelvo li {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        .signature-section {
+            margin-top: 50px;
+            text-align: center;
+        }
+        .signature-line {
+            border-top: 1px solid #000;
+            width: 300px;
+            margin: 40px auto 5px;
+        }
+        .placeholder {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">RESOLUCIÓN EXENTA DE CONCESIÓN PARA PAGO DE SALDO INSOLUTO</div>
+        <div class="resolution-number">RESOLUCIÓN EXENTA N°{{ NUMERO_CORRELATIVO }}</div>
+        <div class="center-info">CENTRO DE ATENCIÓN: PROVIDENCIA</div>
+        <div class="center-info">FECHA: {{ FECHA_APROBACION }}</div>
+    </div>
+
+    <div class="section-title">V I S T O S:</div>
+    <div class="vistos">
+        <ol>
+            <li>La Resolución Exenta N°80 del 19 febrero de 2018 modificada mediante la Resolución Exenta N° 58 de 28 de febrero de 2023 de la Dirección Nacional del Servicio, mediante la cual se delega en los/as directores/as Regionales la facultad de autorizar el pago de saldos insolutos de beneficios quedados al fallecimiento del/la causante, cuando el monto sea superior a cinco Unidades Tributarias Anuales, y en los/as jefes/as de los Centros de Atención Previsional Regional e Integral (CAPRI), cuando el monto sea igual o inferior a cinco Unidades Tributarias Anuales.</li>
+            <li>La ley N° 20.255 que establece la Reforma Previsional,</li>
+            <li>La ley N° 19.880 que establece las Bases de los Procedimientos Administrativos que rigen los Actos de los Órganos de la Administración del Estado.</li>
+            <li>La Resolución N° 7 del 2019 de la Contraloría General de la República, que fija normas sobre exención del trámite de toma de razón.</li>
+            <li>Las demás normas legales y reglamentarias generales aplicables en la materia,</li>
+        </ol>
+    </div>
+
+    <div class="section-title">CONSIDERANDO:</div>
+    <div class="considerando">
+        <p><strong>A.</strong> Que, en virtud de lo dispuesto en el artículo 6 de la ley N° 19.454, artículo 26 de la ley N° 16.271 y artículos 951 y siguientes, 1269 y 2515, todos del Código Civil, el plazo para el cobro de saldo insoluto de beneficios que deba pagar el IPS en los casos que corresponda, sin excepción, es de cinco años contados desde el fallecimiento del respectivo causante.</p>
+        
+        <p><strong>B.</strong> Que, a los efectos de determinar el monto a pagar a título de saldo insoluto de beneficios, el IPS debe considerar, como regla general, los montos devengados y no pagados al causante durante los cinco (5) años inmediatamente anteriores al fallecimiento debido al plazo general de prescripción el considerando precedente.</p>
+        
+        <p><strong>C.</strong> Que, lo señalado en la letra precedente se aplica siempre que no se trate de prestaciones devengadas y no cobradas en el régimen del ex Servicio de Seguro Social y la ex Caja de Previsión Social de Obreros Municipales de la República, en cuyo caso se deben considerar los montos devengados y no pagados al causante durante los dos (2) años inmediatamente anteriores al fallecimiento, atendido lo dispuesto en los artículos 79 de la ley N° 10.383 y 87 del Decreto N° 68 de 1965, respectivamente.</p>
+        
+        <p><strong>D.</strong> Que, la solicitud de fecha, presentada por la sucesión de Doña <span class="placeholder">{{ NOMBRE_CAUSANTE }}</span> cédula de identidad <span class="placeholder">{{ RUT_CAUSANTE }}</span>, fallecido/a el <span class="placeholder">{{ FECHA_FALLECIMIENTO }}</span>; y los antecedentes adjuntos a ella y los que se registran en este Instituto, permiten resolver el pago del saldo insoluto de beneficios en los términos del resuelvo siguiente.</p>
+    </div>
+
+    <div class="section-title">RESUELVO:</div>
+    <div class="resuelvo">
+        <ol>
+            <li>Páguese a don, <span class="placeholder">{{ NOMBRE_REPRESENTANTE }}</span>, <span class="placeholder">{{ RUT_REPRESENTANTE }}</span>, en su calidad de representante de la sucesión de <span class="placeholder">{{ NOMBRE_FALLECIDA }}</span> la suma de <span class="placeholder">{{ VALOR_SALDO_INSOLUTO }}</span>, por saldo insoluto o valores devengados y no cobrados en su oportunidad por el/la causante y respecto de los cuales existe acción para exigir su pago.</li>
+            <li>Impútese el gasto a la cuenta contable correspondiente.</li>
+        </ol>
+        <p>Notifíquese a la o las personas solicitantes, haciéndoles saber que lo resuelto no afecta su derecho de impugnación establecido en los artículos 53 y siguientes de la ley citada en el Vistos N° 3 de este acto, si así lo estimaren procedente a su interés. Regístrese y archívese en su oportunidad.</p>
+    </div>
+
+    <div class="signature-section">
+        <div class="signature-line"></div>
+        <p>{{ FUNCIONARIO_JEFATURA }}</p>
+        <p>JEFE DE PLATAFORMA CAPRI PROVIDENCIA</p>
+    </div>
+</body>
+</html>
+

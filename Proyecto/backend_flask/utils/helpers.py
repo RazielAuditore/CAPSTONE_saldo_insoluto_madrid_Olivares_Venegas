@@ -88,4 +88,76 @@ def hash_password(password):
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
+def formatear_rut(rut):
+    """Formatear RUT chileno con puntos y guión (ej: 12.345.678-9)"""
+    if not rut:
+        return ''
+    
+    # Limpiar RUT
+    rut_limpio = rut.replace('.', '').replace('-', '').upper()
+    
+    if len(rut_limpio) < 8:
+        return rut  # Retornar original si es muy corto
+    
+    # Separar número y dígito verificador
+    numero = rut_limpio[:-1]
+    dv = rut_limpio[-1]
+    
+    # Formatear número con puntos
+    numero_formateado = ''
+    for i, digito in enumerate(reversed(numero)):
+        if i > 0 and i % 3 == 0:
+            numero_formateado = '.' + numero_formateado
+        numero_formateado = digito + numero_formateado
+    
+    return f"{numero_formateado}-{dv}"
+
+def formatear_fecha(fecha):
+    """Formatear fecha a formato legible en español (ej: 15 de marzo de 2024)"""
+    if not fecha:
+        return ''
+    
+    from datetime import datetime
+    
+    # Si es string, convertir a datetime
+    if isinstance(fecha, str):
+        try:
+            # Intentar diferentes formatos
+            for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+                try:
+                    fecha = datetime.strptime(fecha.split('T')[0], fmt)
+                    break
+                except:
+                    continue
+        except:
+            return str(fecha)
+    
+    # Meses en español
+    meses = [
+        'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+    ]
+    
+    dia = fecha.day
+    mes = meses[fecha.month - 1]
+    año = fecha.year
+    
+    return f"{dia} de {mes} de {año}"
+
+def formatear_moneda(monto):
+    """Formatear monto como moneda chilena (ej: $1.234.567)"""
+    if monto is None:
+        return '$0'
+    
+    # Convertir a float si es necesario
+    try:
+        monto_float = float(monto)
+    except:
+        return str(monto)
+    
+    # Formatear con separador de miles
+    monto_str = f"{int(monto_float):,}".replace(',', '.')
+    
+    return f"${monto_str}"
+
 

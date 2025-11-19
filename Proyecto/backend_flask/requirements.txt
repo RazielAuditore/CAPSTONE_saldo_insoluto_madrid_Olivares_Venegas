@@ -3,3 +3,7 @@ Flask-CORS==4.0.0
 psycopg2-binary==2.9.7
 python-dotenv==1.0.0
 bcrypt==4.0.1
+docxtpl==0.16.7
+docx2pdf==0.1.8
+pywin32==306
+xhtml2pdf==0.2.13
