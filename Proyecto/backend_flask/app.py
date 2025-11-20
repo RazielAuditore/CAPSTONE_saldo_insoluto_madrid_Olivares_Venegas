@@ -3561,6 +3561,14 @@ def enviar_solicitud_revision(solicitud_id):
             conn.close()
         return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
+# Registrar rutas de autocompletado (fuera de if __name__ para que se registren siempre)
+try:
+    from routes.autocompletar import register_routes as register_autocompletar_routes
+    register_autocompletar_routes(app)
+    print('✅ Rutas de autocompletado registradas')
+except Exception as e:
+    print(f'⚠️ Error registrando rutas de autocompletado: {e}')
+
 if __name__ == '__main__':
     if test_connection():
         # Crear tabla de firmas de beneficiarios si no existe
@@ -3579,6 +3587,10 @@ if __name__ == '__main__':
         # Eliminar columnas innecesarias de firma
         from utils.database import remove_unused_firma_columns
         remove_unused_firma_columns()
+        
+        # Cargar Excel al iniciar
+        from utils.excel_service import cargar_excel
+        cargar_excel()
         
         config = Config()
         print(f'✅ Servidor Flask ejecutándose en puerto {config.PORT}')

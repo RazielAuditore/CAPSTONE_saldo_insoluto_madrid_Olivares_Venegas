@@ -546,7 +546,207 @@
           field.addEventListener('input', formatRUT);
         }
       });
+
+      // Configurar autocompletado desde Excel
+      configurarAutocompletado();
     });
+
+    // ----- Autocompletado desde Excel -----
+    function normalizarRUT(rut) {
+      if (!rut) return '';
+      return rut.replace(/[^0-9kK]/gi, '').toUpperCase();
+    }
+
+    function esRUTCompleto(rut) {
+      const rutNorm = normalizarRUT(rut);
+      return rutNorm.length >= 8 && rutNorm.length <= 9;
+    }
+
+    async function autocompletarRepresentante(rut) {
+      if (!esRUTCompleto(rut)) return;
+
+      try {
+        const response = await fetch(`http://localhost:3001/api/autocompletar/representante/${encodeURIComponent(rut)}`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const resultado = await response.json();
+          if (resultado.data) {
+            const datos = resultado.data;
+            
+            // Autocompletar campos del representante
+            if (datos.rut) document.getElementById('rep_rut').value = datos.rut;
+            if (datos.calidad) document.getElementById('rep_calidad').value = datos.calidad;
+            if (datos.nombre) document.getElementById('rep_nombre').value = datos.nombre;
+            if (datos.apellido_paterno) document.getElementById('rep_apellido_p').value = datos.apellido_paterno;
+            if (datos.apellido_materno) document.getElementById('rep_apellido_m').value = datos.apellido_materno;
+            if (datos.telefono) document.getElementById('rep_telefono').value = datos.telefono;
+            if (datos.direccion) document.getElementById('rep_direccion').value = datos.direccion;
+            if (datos.comuna) document.getElementById('rep_comuna').value = datos.comuna;
+            if (datos.region) document.getElementById('rep_region').value = datos.region;
+            if (datos.email) document.getElementById('rep_email').value = datos.email;
+
+            console.log('✅ Datos del representante autocompletados');
+          }
+        } else if (response.status === 404) {
+          console.log('ℹ️ Representante no encontrado en Excel');
+        }
+      } catch (error) {
+        console.error('❌ Error al autocompletar representante:', error);
+      }
+    }
+
+    async function autocompletarCausante(rut) {
+      if (!esRUTCompleto(rut)) return;
+
+      try {
+        const response = await fetch(`http://localhost:3001/api/autocompletar/causante/${encodeURIComponent(rut)}`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const resultado = await response.json();
+          if (resultado.data) {
+            const datos = resultado.data;
+            
+            // Autocompletar campos del causante
+            if (datos.rut) document.getElementById('fal_run').value = datos.rut;
+            if (datos.nacionalidad) document.getElementById('fal_nac').value = datos.nacionalidad;
+            if (datos.nombre) document.getElementById('fal_nombre').value = datos.nombre;
+            if (datos.apellido_paterno) document.getElementById('fal_apellido_p').value = datos.apellido_paterno;
+            if (datos.apellido_materno) document.getElementById('fal_apellido_m').value = datos.apellido_materno;
+            if (datos.fecha_defuncion) document.getElementById('fal_fecha_defuncion').value = datos.fecha_defuncion;
+            if (datos.comuna_defuncion) document.getElementById('fal_comuna_defuncion').value = datos.comuna_defuncion;
+
+            console.log('✅ Datos del causante autocompletados');
+
+            // Después de autocompletar causante, cargar beneficiarios automáticamente
+            await autocompletarBeneficiarios(rut);
+          }
+        } else if (response.status === 404) {
+          console.log('ℹ️ Causante no encontrado en Excel');
+        }
+      } catch (error) {
+        console.error('❌ Error al autocompletar causante:', error);
+      }
+    }
+
+    async function autocompletarBeneficiarios(rutCausante) {
+      if (!esRUTCompleto(rutCausante)) return;
+
+      try {
+        const response = await fetch(`http://localhost:3001/api/autocompletar/beneficiarios/${encodeURIComponent(rutCausante)}`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const resultado = await response.json();
+          if (resultado.data && resultado.data.length > 0) {
+            const beneficiarios = resultado.data;
+            
+            // Limpiar tabla de beneficiarios existente
+            const tbody = document.querySelector("#tablaBen tbody");
+            tbody.innerHTML = '';
+
+            // Agregar cada beneficiario a la tabla
+            beneficiarios.forEach(ben => {
+              // Separar nombre completo en nombre y apellidos si es necesario
+              const nombreCompleto = ben.nombre_completo || '';
+              const partes = nombreCompleto.split(' ');
+              const nombre = partes[0] || '';
+              const apellidos = partes.slice(1).join(' ') || '';
+
+              // Llenar campos temporales
+              document.getElementById('ben_nombre').value = nombreCompleto;
+              document.getElementById('ben_run').value = ben.rut_beneficiario || '';
+              document.getElementById('ben_parentesco').value = ben.parentesco || '';
+
+              // Agregar a la tabla
+              agregarBeneficiario();
+
+              // Si es representante, marcar el checkbox
+              const ultimaFila = tbody.querySelector('tr:last-child');
+              if (ultimaFila && ben.es_representante) {
+                const checkbox = ultimaFila.querySelector('.esRep');
+                if (checkbox) checkbox.checked = true;
+              }
+            });
+
+            // Limpiar campos temporales
+            document.getElementById('ben_nombre').value = '';
+            document.getElementById('ben_run').value = '';
+            document.getElementById('ben_parentesco').value = '';
+
+            console.log(`✅ ${beneficiarios.length} beneficiario(s) autocompletado(s)`);
+          } else {
+            console.log('ℹ️ No se encontraron beneficiarios en Excel');
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error al autocompletar beneficiarios:', error);
+      }
+    }
+
+    function configurarAutocompletado() {
+      // Autocompletar representante cuando se completa el RUT
+      const repRutField = document.getElementById('rep_rut');
+      if (repRutField) {
+        repRutField.addEventListener('blur', function() {
+          const rut = this.value.trim();
+          if (rut && esRUTCompleto(rut)) {
+            autocompletarRepresentante(rut);
+          }
+        });
+      }
+
+      // Autocompletar causante cuando se completa el RUT
+      const falRunField = document.getElementById('fal_run');
+      if (falRunField) {
+        falRunField.addEventListener('blur', function() {
+          const rut = this.value.trim();
+          if (rut && esRUTCompleto(rut)) {
+            autocompletarCausante(rut);
+          }
+        });
+      }
+
+      // Autocompletar nombre de beneficiario cuando se completa el RUT
+      const benRunField = document.getElementById('ben_run');
+      if (benRunField) {
+        benRunField.addEventListener('blur', async function() {
+          const rut = this.value.trim();
+          if (rut && esRUTCompleto(rut)) {
+            await autocompletarNombreBeneficiario(rut);
+          }
+        });
+      }
+    }
+
+    async function autocompletarNombreBeneficiario(rut) {
+      try {
+        const response = await fetch(`http://localhost:3001/api/autocompletar/beneficiario/${encodeURIComponent(rut)}`, {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const resultado = await response.json();
+          if (resultado.data && resultado.data.nombre) {
+            // Solo autocompletar el nombre
+            document.getElementById('ben_nombre').value = resultado.data.nombre;
+            console.log('✅ Nombre del beneficiario autocompletado');
+          }
+        } else if (response.status === 404) {
+          console.log('ℹ️ Beneficiario no encontrado en Excel');
+        }
+      } catch (error) {
+        console.error('❌ Error al autocompletar beneficiario:', error);
+      }
+    }
     // ----- Tabs -----
     const tabButtons = document.querySelectorAll(".tab-btn");
     function goTab(id) {
