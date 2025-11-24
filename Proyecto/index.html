@@ -210,20 +210,53 @@
         
         async function logout() {
             try {
+                console.log('🔔 Iniciando cierre de sesión...');
+                
                 const response = await fetch('http://localhost:3001/api/logout', {
                     method: 'POST',
-                    credentials: 'include'
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
                 });
                 
+                console.log('📡 Respuesta del servidor:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    ok: response.ok,
+                    headers: Object.fromEntries(response.headers.entries())
+                });
+                
+                // Intentar leer el texto de la respuesta primero
+                const responseText = await response.text();
+                console.log('📄 Contenido de la respuesta:', responseText);
+                
                 if (response.ok) {
-                    // Redirigir a login
-                    window.location.href = 'IngresoCredenciales.html';
+                    try {
+                        const data = JSON.parse(responseText);
+                        console.log('✅ Sesión cerrada:', data);
+                        // Redirigir a login
+                        window.location.href = 'IngresoCredenciales.html';
+                    } catch (parseError) {
+                        console.error('❌ Error parseando JSON:', parseError);
+                        console.log('📄 Respuesta recibida (texto):', responseText);
+                        // Si la respuesta es OK pero no es JSON, igual redirigir
+                        window.location.href = 'IngresoCredenciales.html';
+                    }
                 } else {
-                    alert('Error al cerrar sesión');
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(responseText);
+                    } catch {
+                        errorData = { error: responseText || `Error ${response.status}: ${response.statusText}` };
+                    }
+                    console.error('❌ Error del servidor:', errorData);
+                    alert(`Error al cerrar sesión: ${errorData.error || errorData.message || response.statusText}`);
                 }
             } catch (error) {
-                console.error('Error cerrando sesión:', error);
-                alert('Error al cerrar sesión');
+                console.error('❌ Error cerrando sesión:', error);
+                console.error('❌ Stack trace:', error.stack);
+                alert(`Error al cerrar sesión: ${error.message || 'Error de conexión'}`);
             }
         }
     </script>

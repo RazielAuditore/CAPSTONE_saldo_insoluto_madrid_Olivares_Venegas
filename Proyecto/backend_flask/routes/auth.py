@@ -2,27 +2,10 @@
 Rutas de autenticación
 """
 from flask import request, jsonify, session
-from functools import wraps
 import bcrypt
 from utils.database import get_db_connection
 from psycopg2.extras import RealDictCursor
-
-# Exportar login_required para uso en otros módulos
-def login_required(f):
-    """Decorador para requerir autenticación"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        print(f"🔍 Verificando sesión para {f.__name__}")
-        print(f"🔍 Session keys: {list(session.keys())}")
-        print(f"🔍 User ID en sesión: {session.get('user_id', 'NO HAY')}")
-        
-        if 'user_id' not in session:
-            print(f"❌ No autorizado - no hay user_id en sesión")
-            return jsonify({'error': 'No autorizado', 'redirect': '/IngresoCredenciales.html'}), 401
-        
-        print(f"✅ Autorizado - user_id: {session['user_id']}")
-        return f(*args, **kwargs)
-    return decorated_function
+from middleware.auth import login_required
 
 def register_routes(app):
     """Registrar rutas de autenticación"""
@@ -85,8 +68,62 @@ def register_routes(app):
     @app.route('/api/logout', methods=['POST'])
     def logout():
         """Cerrar sesión"""
-        session.clear()
-        return jsonify({'success': True, 'message': 'Sesión cerrada exitosamente'}), 200
+        import traceback
+        try:
+            print('🔔 Petición de cierre de sesión recibida')
+            print(f'📋 Tipo de session: {type(session)}')
+            
+            # Intentar obtener las keys de la sesión de forma segura
+            try:
+                session_keys = list(session.keys()) if hasattr(session, 'keys') else []
+                print(f'📋 Session keys antes de limpiar: {session_keys}')
+            except Exception as session_error:
+                print(f'⚠️ No se pudieron leer las keys de la sesión: {session_error}')
+                print(f'⚠️ Traceback: {traceback.format_exc()}')
+                session_keys = []
+            
+            # Limpiar la sesión de forma segura
+            try:
+                if hasattr(session, 'clear'):
+                    session.clear()
+                    print('✅ Sesión limpiada exitosamente')
+                else:
+                    print('⚠️ session no tiene método clear')
+                    # Intentar limpiar manualmente
+                    for key in list(session.keys()):
+                        session.pop(key, None)
+            except Exception as clear_error:
+                print(f'⚠️ Error al limpiar sesión: {clear_error}')
+                print(f'⚠️ Traceback: {traceback.format_exc()}')
+                # Continuar de todas formas
+            
+            return jsonify({
+                'success': True,
+                'message': 'Sesión cerrada exitosamente'
+            }), 200
+            
+        except Exception as e:
+            print(f'❌ Error cerrando sesión: {e}')
+            print(f'❌ Traceback completo:')
+            traceback.print_exc()
+            
+            # Intentar limpiar la sesión de todas formas
+            try:
+                if hasattr(session, 'clear'):
+                    session.clear()
+                else:
+                    for key in list(session.keys()):
+                        session.pop(key, None)
+            except:
+                pass
+            
+            # Devolver error pero con información útil
+            return jsonify({
+                'success': False,
+                'error': str(e),
+                'message': 'Error al cerrar sesión',
+                'traceback': traceback.format_exc()
+            }), 500
 
     @app.route('/api/check-session', methods=['GET'])
     def check_session():
@@ -103,5 +140,5 @@ def register_routes(app):
                 }
             }), 200
         else:
-            return jsonify({'authenticated': False}), 401
-
+            # Devolver 200 con authenticated: False (no es un error, simplemente no hay sesión)
+            return jsonify({'authenticated': False}), 200

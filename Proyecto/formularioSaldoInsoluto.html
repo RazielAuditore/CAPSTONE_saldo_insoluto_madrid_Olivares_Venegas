@@ -61,6 +61,26 @@
     .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; background:#eef; margin-left:8px; }
     .badge.ok { background:#e6f6ea; color:#0f7a2e; }
     
+    /* Botón Volver */
+    .btn-volver {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #6c757d;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      text-decoration: none;
+      margin-bottom: 20px;
+      transition: background 0.3s;
+    }
+    .btn-volver:hover {
+      background: #5a6268;
+    }
+    
     /* Estilos para lista de archivos */
     .archivos-lista {
       border: 1px solid #ddd;
@@ -136,6 +156,9 @@
 </head>
 <body>
   <img src="img/IPS_ChileAtiende_logo.png.png" alt="IPS ChileAtiende" class="logo-ips" />
+  <button onclick="window.location.href='index.html'" class="btn-volver">
+    ← Volver al Inicio
+  </button>
   <h1>Formulario de saldo insoluto  </h1>
   <div class="card">
     <!-- Tabs -->
@@ -148,7 +171,7 @@
       <button class="tab-btn" data-tab="enviar">Enviar</button>
     </div>
 
-    <form id="formSaldo" onsubmit="handleSubmit(event)" method="post" novalidate>
+    <form id="formSaldo" onsubmit="handleSubmit(event)" method="post" novalidate onkeydown="if(event.key === 'Enter' && event.target.tagName !== 'TEXTAREA' && event.target.type !== 'submit') { event.preventDefault(); }">
       <!-- REPRESENTANTE -->
       <section id="rep" class="section active">
         <fieldset>
@@ -158,7 +181,8 @@
               <input id="rep_rut" name="rep_rut" type="text" placeholder="12.345.678-9" required>
             </label>
             <label>Calidad
-              <select id="rep_calidad" name="rep_calidad">
+              <select id="rep_calidad" name="rep_calidad" required>
+                <option value="">Seleccione...</option>
                 <option value="Heredero">Heredero</option>
                 <option value="Representante con poder">Representante con poder</option>
                 <option value="Curador">Curador</option>
@@ -211,7 +235,8 @@
               <input id="fal_run" name="fal_run" type="text" placeholder="12.345.678-9" required>
             </label>
             <label>Nacionalidad
-              <select id="fal_nac" name="fal_nac">
+              <select id="fal_nac" name="fal_nac" required>
+                <option value="">Seleccione...</option>
                 <option value="Chileno/a">Chileno/a</option>
                 <option value="Extranjero/a">Extranjero/a</option>
               </select>
@@ -310,7 +335,7 @@
               <div class="row">
                 <div class="col-md-6">
                   <label>Tipo de Documento
-                    <select name="tipo_documento[]" class="tipo-documento-select" required>
+                    <select name="tipo_documento[]" class="tipo-documento-select">
                       <option value="">Seleccione el tipo de documento</option>
                       <option value="1">Certificado de Defunción</option>
                       <option value="2">Certificado de Nacimiento</option>
@@ -324,7 +349,7 @@
                 </div>
                 <div class="col-md-6">
                   <label>Archivo
-                    <input type="file" name="documento[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required />
+                    <input type="file" name="documento[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
                   </label>
                 </div>
               </div>
@@ -451,7 +476,7 @@
         <fieldset>
           <legend><b>Validación y Expedición</b></legend>
           <label>Sucursal de expedición
-            <input type="text" id="sucursal" name="sucursal" placeholder="Ej: IPS Providencia">
+            <input type="text" id="sucursal" name="sucursal" placeholder="Ej: IPS Providencia" required>
           </label>
 
           <div class="row">
@@ -464,9 +489,6 @@
             </div>
           </div>
 
-          <p class="muted" style="margin-top:8px;">
-            La firma se genera como <b>HMAC-SHA256</b> usando la clave del funcionario logueado. El representante firmará con la aplicación externa.
-          </p>
         </fieldset>
         <div class="actions">
           <button type="button" class="btn btn-secondary" onclick="goTab('docs')">← Volver</button>
@@ -549,6 +571,48 @@
 
       // Configurar autocompletado desde Excel
       configurarAutocompletado();
+      
+      // Prevenir envío del formulario al presionar Enter y navegar al siguiente campo
+      const form = document.getElementById('formSaldo');
+      form.addEventListener('keydown', function(e) {
+        // Si se presiona Enter y no es en un textarea, botón submit, o botón de acción
+        if (e.key === 'Enter' && 
+            e.target.tagName !== 'TEXTAREA' && 
+            e.target.type !== 'submit' &&
+            !e.target.closest('.actions')) {
+          e.preventDefault();
+          
+          // Obtener la sección activa
+          const activeSection = document.querySelector('.section.active');
+          if (!activeSection) return;
+          
+          // Obtener todos los campos de la sección activa en orden (solo inputs y selects)
+          const formElements = Array.from(activeSection.querySelectorAll('input:not([type="file"]):not([type="button"]):not([type="submit"]), select, textarea'));
+          const currentIndex = formElements.indexOf(e.target);
+          
+          // Si hay un siguiente campo, enfocarlo
+          if (currentIndex !== -1 && currentIndex < formElements.length - 1) {
+            const nextElement = formElements[currentIndex + 1];
+            
+            // Enfocar el siguiente campo
+            nextElement.focus();
+            
+            // Si es un select, abrirlo después de un pequeño delay
+            if (nextElement.tagName === 'SELECT') {
+              setTimeout(() => {
+                nextElement.focus();
+                nextElement.size = nextElement.options.length;
+                nextElement.addEventListener('blur', function() {
+                  this.size = 1;
+                }, { once: true });
+              }, 10);
+            }
+          } else if (currentIndex === formElements.length - 1) {
+            // Si es el último campo, no hacer nada (evitar loop)
+            return;
+          }
+        }
+      });
     });
 
     // ----- Autocompletado desde Excel -----
