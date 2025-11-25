@@ -119,7 +119,6 @@ def cargar_excel():
             'Nombre completo': 'nombre_completo',
             'Nombre': 'nombre_completo',
             'Parentesco': 'parentesco',
-            'Es representante': 'es_representante'
         }
         for old, new in rename_ben.items():
             if old in _df_beneficiarios.columns:
@@ -264,7 +263,6 @@ def buscar_beneficiarios(rut_causante):
             'rut_beneficiario': formatear_rut(str(row.get('rut_beneficiario', ''))) if pd.notna(row.get('rut_beneficiario')) else '',
             'nombre_completo': str(row.get('nombre_completo', '')).strip() if pd.notna(row.get('nombre_completo')) else '',
             'parentesco': str(row.get('parentesco', '')).strip() if pd.notna(row.get('parentesco')) else '',
-            'es_representante': bool(row.get('es_representante', False)) if pd.notna(row.get('es_representante')) else False
         }
         beneficiarios.append(ben)
     

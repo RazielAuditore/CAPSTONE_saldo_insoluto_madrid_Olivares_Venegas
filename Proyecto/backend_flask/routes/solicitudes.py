@@ -93,12 +93,11 @@ def register_routes(app):
                 for beneficiario in beneficiarios:
                     if beneficiario.get('nombre') and beneficiario.get('run'):
                         cur.execute("""
-                            INSERT INTO app.beneficiarios (expediente_id, solicitud_id, ben_nombre, ben_run, ben_parentesco, es_representante)
-                            VALUES (%s, %s, %s, %s, %s, %s)
+                            INSERT INTO app.beneficiarios (expediente_id, solicitud_id, ben_nombre, ben_run, ben_parentesco)
+                            VALUES (%s, %s, %s, %s, %s)
                         """, (
                             expediente_id, solicitud_id, beneficiario.get('nombre'),
-                            beneficiario.get('run'), beneficiario.get('parentesco') or None,
-                            beneficiario.get('es_representante', False)
+                            beneficiario.get('run'), beneficiario.get('parentesco') or None
                         ))
             
             # Validación

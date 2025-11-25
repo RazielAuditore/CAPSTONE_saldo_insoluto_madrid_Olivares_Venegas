@@ -312,12 +312,11 @@
           <table id="tablaBen">
             <thead>
               <tr>
-                <th>Nombre</th><th>RUN</th><th>Parentesco</th><th>¿Representante?</th><th></th>
+                <th>Nombre</th><th>RUN</th><th>Parentesco</th><th></th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
-          <p class="muted">Marca “Representante” solo para la persona que actúa en representación.</p>
         </fieldset>
         <div class="actions">
           <button type="button" class="btn btn-secondary" onclick="goTab('fal')"> Volver</button>
@@ -731,13 +730,6 @@
 
               // Agregar a la tabla
               agregarBeneficiario();
-
-              // Si es representante, marcar el checkbox
-              const ultimaFila = tbody.querySelector('tr:last-child');
-              if (ultimaFila && ben.es_representante) {
-                const checkbox = ultimaFila.querySelector('.esRep');
-                if (checkbox) checkbox.checked = true;
-              }
             });
 
             // Limpiar campos temporales
@@ -921,7 +913,6 @@
         <td>${nombre}</td>
         <td>${run}</td>
         <td>${par}</td>
-        <td style="text-align:center;"><input type="checkbox" class="esRep"></td>
         <td><button type="button" class="btn btn-bad" onclick="this.closest('tr').remove()">Eliminar</button></td>
       `;
       tbody.appendChild(tr);
@@ -1188,8 +1179,7 @@
           return {
             nombre: tds[0]?.textContent || "",
             run: tds[1]?.textContent || "",
-            parentesco: tds[2]?.textContent || "",
-            es_representante: tr.querySelector(".esRep")?.checked || false
+            parentesco: tds[2]?.textContent || ""
           };
         });
 

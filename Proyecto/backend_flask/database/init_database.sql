@@ -128,7 +128,6 @@ CREATE TABLE IF NOT EXISTS app.beneficiarios (
     ben_nombre VARCHAR(255) NOT NULL,
     ben_run VARCHAR(20) NOT NULL,
     ben_parentesco VARCHAR(100),
-    es_representante BOOLEAN DEFAULT false,
     creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(expediente_id, ben_run)
