@@ -157,7 +157,7 @@
 <body>
   <img src="img/IPS_ChileAtiende_logo.png.png" alt="IPS ChileAtiende" class="logo-ips" />
   <button onclick="window.location.href='index.html'" class="btn-volver">
-    ← Volver al Inicio
+    Volver
   </button>
   <h1>Formulario de saldo insoluto  </h1>
   <div class="card">
@@ -266,7 +266,7 @@
           </div>
         </fieldset>
         <div class="actions">
-          <button type="button" class="btn btn-secondary" onclick="goTab('rep')">← Volver</button>
+          <button type="button" class="btn btn-secondary" onclick="goTab('rep')">Volver</button>
           <button type="button" class="btn btn-primary" onclick="goTab('ben')">Siguiente: Beneficiarios </button>
         </div>
       </section>
@@ -277,12 +277,12 @@
           <legend><b>Beneficiarios / Herederos</b></legend>
 
           <div class="row3">
-            <label>Nombre completo
-              <input id="ben_nombre" type="text" placeholder="Ej.: Ana Pérez Gómez">
-            </label>
             <label>RUN
               <input id="ben_run" type="text" placeholder="12.345.678-9"
                      pattern="\\d{1,2}\\.\\d{3}\\.\\d{3}-[0-9kK]">
+            </label>
+            <label>Nombre completo
+              <input id="ben_nombre" type="text" placeholder="Ej.: Ana Pérez Gómez">
             </label>
             <label>Parentesco
               <select id="ben_parentesco">
@@ -490,7 +490,7 @@
 
         </fieldset>
         <div class="actions">
-          <button type="button" class="btn btn-secondary" onclick="goTab('docs')">← Volver</button>
+          <button type="button" class="btn btn-secondary" onclick="goTab('docs')">Volver</button>
           <button type="button" class="btn btn-primary" onclick="goTab('enviar')">Siguiente: Enviar →</button>
         </div>
       </section>
@@ -501,7 +501,7 @@
           <legend><b>Revisión y Envío</b></legend>
           <p class="muted">Al enviar, los datos se guardarán en la base de datos y se generará un ID único para el saldo insoluto. También se descargará un archivo JSON de respaldo.</p>
           <div class="actions">
-            <button type="button" class="btn btn-secondary" onclick="goTab('validacion')">← Volver</button>
+            <button type="button" class="btn btn-secondary" onclick="goTab('validacion')">Volver</button>
             <button type="submit" class="btn btn-ok">Guardar Solicitud</button>
           </div>
         </fieldset>
