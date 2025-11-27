@@ -188,7 +188,7 @@ def register_routes(app):
     @app.route('/api/expediente/<int:expediente_id>/calculo-completo', methods=['GET'])
     @login_required
     def obtener_calculo_completo(expediente_id):
-        """Obtener cálculo completo de saldo insoluto con detalles de beneficios"""
+        """Obtener cálculo completo de saldo insoluto con detalles de beneficios - Optimizado con JOIN"""
         conn = get_db_connection()
         if not conn:
             return jsonify({'error': 'Error de conexión a la base de datos'}), 500
@@ -196,7 +196,7 @@ def register_routes(app):
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Buscar cálculo activo (pendiente o aprobado)
+            # Query optimizada: cálculo + detalles en una sola query usando subconsulta
             cur.execute("""
                 SELECT 
                     c.id,
@@ -205,7 +205,16 @@ def register_routes(app):
                     c.fecha_calculo,
                     c.solicitud_id,
                     c.calculado_por,
-                    f.nombres || ' ' || f.apellido_p as funcionario_nombre
+                    f.nombres || ' ' || f.apellido_p as funcionario_nombre,
+                    (SELECT json_agg(row_to_json(d)) FROM (
+                        SELECT 
+                            beneficio_codigo,
+                            beneficio_nombre,
+                            monto
+                        FROM app.detalle_calculo_saldo
+                        WHERE calculo_id = c.id
+                        ORDER BY beneficio_codigo
+                    ) d) as detalles
                 FROM app.calculo_saldo_insoluto c
                 LEFT JOIN app.funcionarios f ON c.calculado_por = f.id
                 WHERE c.expediente_id = %s AND c.estado IN ('pendiente', 'aprobado')
@@ -222,18 +231,17 @@ def register_routes(app):
                     'message': 'No existe cálculo para este expediente'
                 }), 200
             
-            # Obtener detalles de beneficios
-            cur.execute("""
-                SELECT 
-                    beneficio_codigo,
-                    beneficio_nombre,
-                    monto
-                FROM app.detalle_calculo_saldo
-                WHERE calculo_id = %s
-                ORDER BY beneficio_codigo
-            """, (calculo['id'],))
+            detalles = calculo['detalles'] if calculo['detalles'] else []
             
-            detalles = cur.fetchall()
+            # Procesar detalles (ya vienen como JSON desde la query)
+            beneficios = []
+            if detalles:
+                for det in detalles:
+                    beneficios.append({
+                        'codigo': det['beneficio_codigo'],
+                        'nombre': det['beneficio_nombre'],
+                        'monto': float(det['monto'])
+                    })
             
             cur.close()
             conn.close()
@@ -248,14 +256,7 @@ def register_routes(app):
                     'solicitud_id': calculo['solicitud_id'],
                     'calculado_por': calculo['calculado_por'],
                     'funcionario_nombre': calculo['funcionario_nombre'],
-                    'beneficios': [
-                        {
-                            'codigo': det['beneficio_codigo'],
-                            'nombre': det['beneficio_nombre'],
-                            'monto': float(det['monto'])
-                        }
-                        for det in detalles
-                    ]
+                    'beneficios': beneficios
                 }
             }), 200
             

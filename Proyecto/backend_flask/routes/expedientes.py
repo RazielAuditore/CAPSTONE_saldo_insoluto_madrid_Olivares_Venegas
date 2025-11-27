@@ -3,6 +3,7 @@ Rutas de gestión de expedientes
 """
 from flask import request, jsonify
 from psycopg2.extras import RealDictCursor
+from datetime import datetime
 from utils.database import get_db_connection
 from middleware.auth import login_required
 
@@ -11,7 +12,7 @@ def register_routes(app):
     
     @app.route('/api/expediente/<int:expediente_id>', methods=['GET'])
     def obtener_expediente(expediente_id):
-        """Obtener un expediente completo con todos sus datos"""
+        """Obtener un expediente completo con todos sus datos - Optimizado con JOINs (de 7 queries a 3)"""
         conn = get_db_connection()
         if not conn:
             return jsonify({'error': 'Error de conexión a la base de datos'}), 500
@@ -19,38 +20,100 @@ def register_routes(app):
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
-            cur.execute("SELECT * FROM app.expediente WHERE id = %s", (expediente_id,))
-            expediente = cur.fetchone()
+            # Query 1: Expediente + Representante + Causante (relaciones 1:1, optimizado con JOINs)
+            cur.execute("""
+                SELECT 
+                    e.id, e.expediente_numero, e.estado, e.observaciones, 
+                    e.fecha_creacion, e.funcionario_id,
+                    r.id as rep_id, r.rep_nombre, r.rep_apellido_p, r.rep_apellido_m, 
+                    r.rep_rut, r.rep_calidad, r.rep_telefono, r.rep_email, r.rep_direccion,
+                    c.id as caus_id, c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m,
+                    c.fal_run, c.fal_fecha_defuncion, c.fal_comuna_defuncion, c.fal_nacionalidad
+                FROM app.expediente e
+                LEFT JOIN app.representante r ON e.id = r.expediente_id
+                LEFT JOIN app.causante c ON e.id = c.expediente_id
+                WHERE e.id = %s
+            """, (expediente_id,))
             
-            if not expediente:
+            result = cur.fetchone()
+            
+            if not result:
+                cur.close()
+                conn.close()
                 return jsonify({'error': 'Expediente no encontrado'}), 404
             
-            cur.execute("SELECT * FROM app.representante WHERE expediente_id = %s", (expediente_id,))
-            representante = cur.fetchone()
+            # Construir objetos expediente, representante y causante
+            expediente = {
+                'id': result['id'],
+                'expediente_numero': result['expediente_numero'],
+                'estado': result['estado'],
+                'observaciones': result['observaciones'],
+                'fecha_creacion': result['fecha_creacion'],
+                'funcionario_id': result['funcionario_id']
+            }
             
-            cur.execute("SELECT * FROM app.causante WHERE expediente_id = %s", (expediente_id,))
-            causante = cur.fetchone()
+            representante = None
+            if result.get('rep_id'):
+                representante = {
+                    'id': result['rep_id'],
+                    'rep_nombre': result.get('rep_nombre'),
+                    'rep_apellido_p': result.get('rep_apellido_p'),
+                    'rep_apellido_m': result.get('rep_apellido_m'),
+                    'rep_rut': result.get('rep_rut'),
+                    'rep_calidad': result.get('rep_calidad'),
+                    'rep_telefono': result.get('rep_telefono'),
+                    'rep_email': result.get('rep_email'),
+                    'rep_direccion': result.get('rep_direccion'),
+                    'expediente_id': expediente_id
+                }
             
-            cur.execute("SELECT * FROM app.solicitudes WHERE expediente_id = %s", (expediente_id,))
-            solicitudes = cur.fetchall()
+            causante = None
+            if result.get('caus_id'):
+                causante = {
+                    'id': result['caus_id'],
+                    'fal_nombre': result.get('fal_nombre'),
+                    'fal_apellido_p': result.get('fal_apellido_p'),
+                    'fal_apellido_m': result.get('fal_apellido_m'),
+                    'fal_run': result.get('fal_run'),
+                    'fal_fecha_defuncion': result.get('fal_fecha_defuncion'),
+                    'fal_comuna_defuncion': result.get('fal_comuna_defuncion'),
+                    'fal_nacionalidad': result.get('fal_nacionalidad'),
+                    'expediente_id': expediente_id
+                }
             
-            cur.execute("SELECT * FROM app.beneficiarios WHERE expediente_id = %s", (expediente_id,))
-            beneficiarios = cur.fetchall()
+            # Query 2: Solicitudes, Beneficiarios y Documentos (relaciones 1:many, optimizado con subconsultas)
+            cur.execute("""
+                SELECT 
+                    (SELECT json_agg(row_to_json(s)) FROM (
+                        SELECT * FROM app.solicitudes WHERE expediente_id = %s
+                    ) s) as solicitudes,
+                    (SELECT json_agg(row_to_json(b)) FROM (
+                        SELECT * FROM app.beneficiarios WHERE expediente_id = %s
+                    ) b) as beneficiarios,
+                    (SELECT json_agg(row_to_json(d)) FROM (
+                        SELECT * FROM app.documentos_saldo_insoluto WHERE expediente_id = %s
+                    ) d) as documentos
+            """, (expediente_id, expediente_id, expediente_id))
             
-            cur.execute("SELECT * FROM app.documentos_saldo_insoluto WHERE expediente_id = %s", (expediente_id,))
-            documentos = cur.fetchall()
+            result2 = cur.fetchone()
             
+            solicitudes = result2['solicitudes'] if result2['solicitudes'] else []
+            beneficiarios = result2['beneficiarios'] if result2['beneficiarios'] else []
+            documentos = result2['documentos'] if result2['documentos'] else []
+            
+            # Query 3: Validación (relación 1:1)
             cur.execute("SELECT * FROM app.validacion WHERE expediente_id = %s", (expediente_id,))
-            validacion = cur.fetchone()
+            validacion_result = cur.fetchone()
+            validacion = dict(validacion_result) if validacion_result else None
             
             response = {
-                'expediente': dict(expediente) if expediente else None,
-                'representante': dict(representante) if representante else None,
-                'causante': dict(causante) if causante else None,
-                'solicitudes': [dict(s) for s in solicitudes],
-                'beneficiarios': [dict(b) for b in beneficiarios],
-                'documentos': [dict(d) for d in documentos],
-                'validacion': dict(validacion) if validacion else None
+                'expediente': expediente,
+                'representante': representante,
+                'causante': causante,
+                'solicitudes': solicitudes,
+                'beneficiarios': beneficiarios,
+                'documentos': documentos,
+                'validacion': validacion
             }
             
             cur.close()
@@ -58,110 +121,8 @@ def register_routes(app):
             return jsonify(response), 200
             
         except Exception as e:
-            cur.close()
-            conn.close()
-            return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
-
-    @app.route('/api/buscar-saldo-insoluto', methods=['POST'])
-    @login_required
-    def buscar_saldo_insoluto():
-        """Buscar saldos insolutos por RUT del causante"""
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Error de conexión a la base de datos'}), 500
-        
-        try:
-            data = request.get_json()
-            
-            if not data.get('rut'):
-                return jsonify({'error': 'RUT es requerido'}), 400
-            
-            rut = data['rut'].strip()
-            rut_limpio = rut.replace('.', '').replace('-', '').upper()
-            
-            if len(rut_limpio) < 8 or len(rut_limpio) > 9:
-                return jsonify({'error': 'Formato de RUT inválido'}), 400
-            
-            if not rut_limpio[:-1].isdigit() or rut_limpio[-1] not in '0123456789K':
-                return jsonify({'error': 'Formato de RUT inválido'}), 400
-            
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            
-            cur.execute("""
-                SELECT DISTINCT
-                    e.id as expediente_id, e.expediente_numero, e.estado as estado_expediente,
-                    e.observaciones, c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run,
-                    c.fal_fecha_defuncion, c.fal_comuna_defuncion, s.folio, s.estado as estado_solicitud,
-                    s.sucursal, e.fecha_creacion, COUNT(b.id) as total_beneficiarios,
-                    COUNT(uf.id) as beneficiarios_firmados
-                FROM app.expediente e
-                JOIN app.causante c ON e.id = c.expediente_id
-                JOIN app.solicitudes s ON e.id = s.expediente_id
-                LEFT JOIN app.beneficiarios b ON e.id = b.expediente_id
-                LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
-                WHERE c.fal_run = %s
-                GROUP BY e.id, e.expediente_numero, e.estado, e.observaciones, e.fecha_creacion,
-                         c.fal_nombre, c.fal_apellido_p, c.fal_apellido_m, c.fal_run,
-                         c.fal_fecha_defuncion, c.fal_comuna_defuncion, s.folio, s.estado, s.sucursal
-                ORDER BY e.fecha_creacion DESC
-            """, (rut,))
-            
-            expedientes = cur.fetchall()
-            
-            if not expedientes:
+            if 'cur' in locals():
                 cur.close()
-                conn.close()
-                return jsonify({
-                    'success': True,
-                    'message': 'No se encontraron saldos insolutos',
-                    'data': {'rut': rut, 'expedientes': [], 'total': 0}
-                }), 200
-            
-            resultados = []
-            for exp in expedientes:
-                pendientes_firmas = exp['total_beneficiarios'] - exp['beneficiarios_firmados']
-                
-                if exp['estado_solicitud'] == 'completado':
-                    estado_general = 'Completado'
-                    color_estado = '#28a745'
-                elif pendientes_firmas == 0 and exp['total_beneficiarios'] > 0:
-                    estado_general = 'Firmas Completas'
-                    color_estado = '#17a2b8'
-                elif pendientes_firmas > 0:
-                    estado_general = f'Pendiente ({pendientes_firmas} firmas)'
-                    color_estado = '#ffc107'
-                else:
-                    estado_general = 'En Proceso'
-                    color_estado = '#6c757d'
-                
-                resultados.append({
-                    'expediente_id': exp['expediente_id'],
-                    'expediente_numero': exp['expediente_numero'],
-                    'folio': exp['folio'],
-                    'causante': {
-                        'nombre_completo': f"{exp['fal_nombre']} {exp['fal_apellido_p']} {exp['fal_apellido_m'] or ''}".strip(),
-                        'rut': exp['fal_run'],
-                        'fecha_defuncion': exp['fal_fecha_defuncion'].strftime('%d/%m/%Y') if exp['fal_fecha_defuncion'] else 'No especificada'
-                    },
-                    'firmas': {
-                        'total_beneficiarios': exp['total_beneficiarios'],
-                        'beneficiarios_firmados': exp['beneficiarios_firmados'],
-                        'pendientes': pendientes_firmas
-                    },
-                    'estado_general': estado_general,
-                    'color_estado': color_estado
-                })
-            
-            cur.close()
-            conn.close()
-            
-            return jsonify({
-                'success': True,
-                'message': f'Se encontraron {len(resultados)} saldo(s) insoluto(s)',
-                'data': {'rut': rut, 'expedientes': resultados, 'total': len(resultados)}
-            }), 200
-            
-        except Exception as e:
             if 'conn' in locals():
                 conn.close()
             return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
@@ -265,56 +226,48 @@ def register_routes(app):
                     }
                 }), 200
             
-            # Obtener beneficiarios del expediente
+            # Query optimizada: Obtener beneficiarios, documentos y verificar firma del representante en una sola query
             cur.execute("""
                 SELECT 
-                    b.id,
-                    b.expediente_id,
-                    b.ben_nombre,
-                    b.ben_run,
-                    b.ben_parentesco,
-                    uf.id as firma_id,
-                    uf.rut as firma_rut
-                FROM app.beneficiarios b
-                LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
-                WHERE b.expediente_id = %s
-                ORDER BY b.id
-            """, (expediente['expediente_id'],))
+                    (SELECT json_agg(row_to_json(b)) FROM (
+                        SELECT 
+                            b.id,
+                            b.expediente_id,
+                            b.ben_nombre,
+                            b.ben_run,
+                            b.ben_parentesco,
+                            uf.id as firma_id,
+                            uf.rut as firma_rut
+                        FROM app.beneficiarios b
+                        LEFT JOIN app.usuarios_firma uf ON b.ben_run = uf.rut
+                        WHERE b.expediente_id = %s
+                        ORDER BY b.id
+                    ) b) as beneficiarios,
+                    (SELECT json_agg(row_to_json(d)) FROM (
+                        SELECT 
+                            d.id,
+                            d.doc_nombre_archivo,
+                            d.doc_tipo_id,
+                            d.doc_tamano_bytes,
+                            d.doc_mime_type,
+                            d.doc_fecha_subida,
+                            d.doc_estado,
+                            d.doc_ruta_storage
+                        FROM app.documentos_saldo_insoluto d
+                        WHERE d.expediente_id = %s
+                        ORDER BY d.doc_fecha_subida DESC
+                    ) d) as documentos,
+                    EXISTS(
+                        SELECT 1 FROM app.usuarios_firma 
+                        WHERE UPPER(rut) = UPPER(%s)
+                    ) as representante_firmado
+            """, (expediente['expediente_id'], expediente['expediente_id'], expediente.get('rep_rut', '')))
             
-            beneficiarios = cur.fetchall()
+            result_extra = cur.fetchone()
             
-            # Obtener documentos del expediente
-            cur.execute("""
-                SELECT 
-                    d.id,
-                    d.doc_nombre_archivo,
-                    d.doc_tipo_id,
-                    d.doc_tamano_bytes,
-                    d.doc_mime_type,
-                    d.doc_fecha_subida,
-                    d.doc_estado,
-                    d.doc_ruta_storage
-                FROM app.documentos_saldo_insoluto d
-                WHERE d.expediente_id = %s
-                ORDER BY d.doc_fecha_subida DESC
-            """, (expediente['expediente_id'],))
-            
-            documentos = cur.fetchall()
-            
-            # Determinar estado de firma del representante ANTES de cerrar el cursor
-            representante_firmado = False
-            
-            if expediente['rep_rut']:
-                # Verificar si el RUT del representante está en usuarios_firma (ignorando mayúsculas/minúsculas)
-                cur.execute("""
-                    SELECT id FROM app.usuarios_firma 
-                    WHERE UPPER(rut) = UPPER(%s)
-                """, (expediente['rep_rut'],))
-                
-                if cur.fetchone():
-                    representante_firmado = True
-                else:
-                    representante_firmado = False
+            beneficiarios = result_extra['beneficiarios'] if result_extra['beneficiarios'] else []
+            documentos = result_extra['documentos'] if result_extra['documentos'] else []
+            representante_firmado = result_extra['representante_firmado'] if expediente.get('rep_rut') else False
             
             cur.close()
             conn.close()
@@ -362,13 +315,30 @@ def register_routes(app):
             for doc in documentos:
                 tamano_mb = (doc['doc_tamano_bytes'] / (1024 * 1024)) if doc['doc_tamano_bytes'] else 0
                 
+                # Manejar fecha_subida: puede venir como string (desde JSON) o datetime
+                fecha_subida = 'No especificada'
+                if doc['doc_fecha_subida']:
+                    if isinstance(doc['doc_fecha_subida'], str):
+                        # Si es string, parsearlo y formatearlo
+                        try:
+                            fecha_obj = datetime.fromisoformat(doc['doc_fecha_subida'].replace('Z', '+00:00'))
+                            fecha_subida = fecha_obj.strftime('%d/%m/%Y %H:%M')
+                        except (ValueError, AttributeError):
+                            # Si falla el parsing, usar el string original
+                            fecha_subida = doc['doc_fecha_subida']
+                    elif hasattr(doc['doc_fecha_subida'], 'strftime'):
+                        # Si es datetime, usar strftime directamente
+                        fecha_subida = doc['doc_fecha_subida'].strftime('%d/%m/%Y %H:%M')
+                    else:
+                        fecha_subida = str(doc['doc_fecha_subida'])
+                
                 documento = {
                     'id': doc['id'],
                     'nombre': doc['doc_nombre_archivo'],
                     'tipo_id': doc['doc_tipo_id'],
                     'tamano_mb': round(tamano_mb, 2),
                     'mime_type': doc['doc_mime_type'],
-                    'fecha_subida': doc['doc_fecha_subida'].strftime('%d/%m/%Y %H:%M') if doc['doc_fecha_subida'] else 'No especificada',
+                    'fecha_subida': fecha_subida,
                     'estado': doc['doc_estado'],
                     'ruta_descarga': doc['doc_ruta_storage']
                 }
