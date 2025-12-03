@@ -8,7 +8,7 @@ from psycopg2.extras import RealDictCursor
 from utils.database import get_db_connection
 from utils.helpers import allowed_file, get_file_hash, get_mime_type
 from werkzeug.utils import secure_filename
-from routes.auth import login_required
+from middleware.auth import login_required
 from utils.helpers import ALLOWED_EXTENSIONS, MAX_FILE_SIZE
 
 def register_routes(app):
@@ -279,6 +279,57 @@ def register_routes(app):
         except Exception as e:
             print(f'❌ Error generando ZIP: {e}')
             if 'conn' in locals():
+                conn.close()
+            return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+
+    @app.route('/api/documentos/<int:documento_id>', methods=['DELETE'])
+    @login_required
+    def eliminar_documento(documento_id):
+        """Eliminar un documento"""
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Error de conexión a la base de datos'}), 500
+        
+        try:
+            cur = conn.cursor()
+            
+            # Verificar que el documento existe y pertenece a un expediente rechazado/enRevision
+            cur.execute("""
+                SELECT d.id, d.expediente_id, s.estado
+                FROM app.documentos_saldo_insoluto d
+                JOIN app.solicitudes s ON d.expediente_id = s.expediente_id
+                WHERE d.id = %s
+                ORDER BY s.id DESC LIMIT 1
+            """, (documento_id,))
+            
+            documento = cur.fetchone()
+            if not documento:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Documento no encontrado'}), 404
+            
+            estado = documento[2]
+            if estado != 'rechazado/enRevision':
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Solo se pueden eliminar documentos de expedientes rechazados en revisión'}), 400
+            
+            # Eliminar documento
+            cur.execute("DELETE FROM app.documentos_saldo_insoluto WHERE id = %s", (documento_id,))
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Documento eliminado exitosamente'
+            }), 200
+            
+        except Exception as e:
+            print(f'❌ Error eliminando documento: {e}')
+            if 'conn' in locals():
+                conn.rollback()
                 conn.close()
             return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 

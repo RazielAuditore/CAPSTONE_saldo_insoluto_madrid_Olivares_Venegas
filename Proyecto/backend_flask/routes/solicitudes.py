@@ -8,7 +8,7 @@ import hmac
 import hashlib
 from psycopg2.extras import RealDictCursor
 from utils.database import get_db_connection
-from routes.auth import login_required
+from middleware.auth import login_required
 
 def register_routes(app):
     """Registrar rutas de solicitudes"""
@@ -93,12 +93,11 @@ def register_routes(app):
                 for beneficiario in beneficiarios:
                     if beneficiario.get('nombre') and beneficiario.get('run'):
                         cur.execute("""
-                            INSERT INTO app.beneficiarios (expediente_id, solicitud_id, ben_nombre, ben_run, ben_parentesco, es_representante)
-                            VALUES (%s, %s, %s, %s, %s, %s)
+                            INSERT INTO app.beneficiarios (expediente_id, solicitud_id, ben_nombre, ben_run, ben_parentesco)
+                            VALUES (%s, %s, %s, %s, %s)
                         """, (
                             expediente_id, solicitud_id, beneficiario.get('nombre'),
-                            beneficiario.get('run'), beneficiario.get('parentesco') or None,
-                            beneficiario.get('es_representante', False)
+                            beneficiario.get('run'), beneficiario.get('parentesco') or None
                         ))
             
             # Validación
@@ -129,182 +128,13 @@ def register_routes(app):
             conn.close()
             return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
 
-    @app.route('/api/solicitudes/<int:solicitud_id>/firma-representante', methods=['POST'])
-    def firmar_representante(solicitud_id):
-        """Firmar como representante"""
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Error de conexión a la base de datos'}), 500
-        
-        try:
-            cur = conn.cursor()
-            data = request.get_json()
-            
-            payload = json.dumps(data.get('payload', {}), sort_keys=True)
-            clave = data.get('clave', '')
-            salt = data.get('salt', '')
-            
-            firma_data = {
-                'firma': hmac.new(
-                    clave.encode('utf-8'),
-                    (payload + salt).encode('utf-8'),
-                    hashlib.sha256
-                ).hexdigest(),
-                'timestamp': datetime.now().isoformat(),
-                'solicitud_id': solicitud_id
-            }
-            
-            cur.execute("""
-                UPDATE app.validacion 
-                SET val_firma_representante = %s
-                WHERE solicitud_id = %s
-            """, (json.dumps(firma_data), solicitud_id))
-            
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            return jsonify({'success': True, 'message': 'Firma de representante guardada'}), 200
-            
-        except Exception as e:
-            cur.close()
-            conn.close()
-            return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+    # Ruta movida a routes/firmas.py para evitar duplicación
+    # La función firmar_representante ahora está en routes/firmas.py
 
-    @app.route('/api/solicitudes/<int:solicitud_id>/firma-funcionario', methods=['POST'])
-    def firmar_funcionario(solicitud_id):
-        """Firmar como funcionario"""
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Error de conexión a la base de datos'}), 500
-        
-        try:
-            cur = conn.cursor()
-            data = request.get_json()
-            
-            payload = json.dumps(data.get('payload', {}), sort_keys=True)
-            clave = data.get('clave', '')
-            salt = data.get('salt', '')
-            
-            firma_data = {
-                'firma': hmac.new(
-                    clave.encode('utf-8'),
-                    (payload + salt).encode('utf-8'),
-                    hashlib.sha256
-                ).hexdigest(),
-                'timestamp': datetime.now().isoformat(),
-                'solicitud_id': solicitud_id
-            }
-            
-            cur.execute("""
-                UPDATE app.validacion 
-                SET val_firma_funcionario = %s
-                WHERE solicitud_id = %s
-            """, (json.dumps(firma_data), solicitud_id))
-            
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            return jsonify({'success': True, 'message': 'Firma de funcionario guardada'}), 200
-            
-        except Exception as e:
-            cur.close()
-            conn.close()
-            return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+    # Ruta movida a routes/firmas.py para evitar duplicación
+    # La función firmar_funcionario ahora está en routes/firmas.py
 
-    @app.route('/api/solicitudes/<int:solicitud_id>/firmar-funcionario', methods=['POST'])
-    @login_required
-    def firmar_solicitud_funcionario(solicitud_id):
-        """Firmar solicitud como funcionario"""
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Error de conexión a la base de datos'}), 500
-        
-        try:
-            data = request.get_json()
-            
-            if not data.get('firma_data'):
-                return jsonify({'error': 'Datos de firma requeridos'}), 400
-            
-            firma_data = data['firma_data']
-            cur = conn.cursor()
-            
-            cur.execute("SELECT id, expediente_id FROM app.solicitudes WHERE id = %s", (solicitud_id,))
-            solicitud = cur.fetchone()
-            
-            if not solicitud:
-                return jsonify({'error': 'Solicitud no encontrada'}), 404
-            
-            expediente_id = solicitud[1]
-            
-            # Obtener funcionario_id de la firma_data o de la sesión
-            funcionario_id_firma = firma_data.get('funcionario_id') or session.get('user_id')
-            
-            if not funcionario_id_firma:
-                return jsonify({'error': 'No se pudo identificar al funcionario'}), 400
-            
-            # Verificar que el funcionario existe en la tabla funcionarios
-            cur.execute("""
-                SELECT id FROM app.funcionarios 
-                WHERE id = %s AND activo = true
-            """, (funcionario_id_firma,))
-            
-            funcionario = cur.fetchone()
-            if not funcionario:
-                return jsonify({'error': 'Funcionario no encontrado o inactivo'}), 404
-            
-            # Actualizar solicitudes con la información de firma del funcionario
-            cur.execute("""
-                UPDATE app.solicitudes 
-                SET firmado_funcionario = TRUE,
-                    fecha_firma_funcionario = NOW(),
-                    funcionario_id_firma = %s,
-                    estado = 'firmado_funcionario'
-                WHERE id = %s
-            """, (funcionario_id_firma, solicitud_id))
-            
-            # Verificar que el UPDATE de solicitud funcionó
-            if cur.rowcount == 0:
-                conn.rollback()
-                cur.close()
-                conn.close()
-                return jsonify({'error': 'No se pudo actualizar el estado de la solicitud'}), 404
-            
-            # Actualizar validación con la firma del funcionario (mantener por compatibilidad)
-            cur.execute("""
-                UPDATE app.validacion 
-                SET val_firma_funcionario = %s, 
-                    val_estado = 'firmado_funcionario', 
-                    updated_at = NOW()
-                WHERE solicitud_id = %s
-            """, (json.dumps(firma_data), solicitud_id))
-            
-            # Verificar que el UPDATE de validación funcionó
-            if cur.rowcount == 0:
-                conn.rollback()
-                cur.close()
-                conn.close()
-                return jsonify({'error': 'No se encontró registro de validación para esta solicitud'}), 404
-            
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            return jsonify({
-                'success': True,
-                'message': 'Solicitud firmada por funcionario exitosamente',
-                'data': {
-                    'solicitud_id': solicitud_id,
-                    'expediente_id': expediente_id,
-                    'estado': 'firmado_funcionario'
-                }
-            }), 200
-            
-        except Exception as e:
-            if 'conn' in locals():
-                conn.rollback()
-                conn.close()
-            return jsonify({'error': f'Error interno del servidor: {str(e)}'}), 500
+    # Ruta movida a routes/firmas.py para evitar duplicación
+    # La función firmar_solicitud_funcionario ahora está en routes/firmas.py
 
 
